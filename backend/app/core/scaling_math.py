@@ -29,6 +29,19 @@ class ScalingMath:
         }
         return opposites.get(direction.lower(), "here")
 
+# Class stat multipliers (hp_mult, damage_mult)
+CLASS_STATS: dict[str, tuple[float, float]] = {
+    "Warrior":  (1.20, 1.00),
+    "Paladin":  (1.15, 0.95),
+    "Hunter":   (1.00, 1.10),
+    "Rogue":    (0.90, 1.20),
+    "Priest":   (0.85, 0.85),
+    "Shaman":   (1.10, 1.05),
+    "Mage":     (0.80, 1.30),
+    "Warlock":  (0.85, 1.20),
+    "Druid":    (1.00, 1.00),
+}
+
 # Rarity Multipliers
 RARITY = {
     "POOR": 0.5,

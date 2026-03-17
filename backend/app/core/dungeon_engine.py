@@ -12,7 +12,7 @@ import random
 import uuid
 import time
 from app.models.schemas import DungeonMember, DungeonRoom, DungeonRun, Mob, Player
-from app.core.scaling_math import ScalingMath
+from app.core.scaling_math import ScalingMath, CLASS_STATS
 from app.core.combat_engine import CombatEngine
 from app.core.world_generator import _make_mobs, _roll_loot
 
@@ -301,11 +301,11 @@ def resolve_round(run: DungeonRun, player: Player) -> dict:
                 if tank:
                     target_type, target_obj = "member", tank
 
+            orig_damage = mob.damage
+            if taunt_active:
+                mob.damage = int(mob.damage * 0.8)
             if target_type == "player":
                 ctr_msgs, player_dead = combat_engine.resolve_tick(mob, player)
-                if taunt_active:
-                    for i, msg in enumerate(ctr_msgs):
-                        ctr_msgs[i] = msg.replace(str(mob.damage), str(int(mob.damage * 0.8)))
                 round_log.extend(ctr_msgs)
             else:
                 # Build a temporary Mob proxy to attack the DungeonMember
@@ -313,15 +313,13 @@ def resolve_round(run: DungeonRun, player: Player) -> dict:
                             hp=target_obj.hp, max_hp=target_obj.max_hp,
                             damage=target_obj.damage, description="")
                 ctr_msgs, member_dead = combat_engine.resolve_tick(mob, proxy)
-                if taunt_active:
-                    for i, msg in enumerate(ctr_msgs):
-                        ctr_msgs[i] = msg.replace(str(mob.damage), str(int(mob.damage * 0.8)))
                 target_obj.hp = proxy.hp  # sync HP back
                 if target_obj.hp <= 0:
                     target_obj.is_alive = False
                     target_obj.last_action = "💀 DEAD"
                     round_log.append(f"  💀 {target_obj.name} has fallen!")
                 round_log.extend(ctr_msgs)
+            mob.damage = orig_damage  # restore after this tick
 
     # ── 4. Handle newly dead mobs ────────────────────────────────────────────
     for mob in room.mobs:
@@ -367,14 +365,15 @@ def resolve_round(run: DungeonRun, player: Player) -> dict:
 
     # Level-up loop
     leveled_up = False
+    hp_mult, dmg_mult = CLASS_STATS.get(player.char_class, (1.0, 1.0))
     while player.xp >= player.next_level_xp:
         player.xp -= player.next_level_xp
         player.level += 1
         player.next_level_xp = ScalingMath.get_xp_required(player.level)
         leveled_up = True
-        player.max_hp = ScalingMath.get_max_hp(player.level)
+        player.max_hp = int(ScalingMath.get_max_hp(player.level) * hp_mult)
         player.hp = player.max_hp
-        player.damage = ScalingMath.get_damage(player.level)
+        player.damage = int(ScalingMath.get_damage(player.level) * dmg_mult)
         round_log.append(f"  ⬆ LEVEL UP! Now level {player.level}!")
 
     # ── 9a. Keep rolling combat log (last 5 meaningful lines) ────────────────

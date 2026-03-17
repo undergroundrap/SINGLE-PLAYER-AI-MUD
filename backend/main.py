@@ -3,7 +3,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.models.schemas import Player, Zone, Mob, Item, Location, Quest, DungeonRun
 from app.core.world_generator import world_gen, _roll_loot
-from app.core.scaling_math import ScalingMath, RARITY
+from app.core.scaling_math import ScalingMath, RARITY, CLASS_STATS
 from app.core.vector_db import vec_db
 from app.core.combat_engine import combat_engine
 from app.core.simulation import sim_engine
@@ -29,18 +29,6 @@ _potion_cooldowns: dict[str, float] = {}  # "{player_id}:heal" | "{player_id}:xp
 _active_xp_buffs:  dict[str, dict]  = {}  # player_id -> {"bonus_pct": int, "charges": int}
 _dungeon_runs:     dict[str, DungeonRun] = {}  # run_id -> DungeonRun (ephemeral)
 
-# Class stat multipliers (hp_mult, damage_mult)
-CLASS_STATS: dict[str, tuple[float, float]] = {
-    "Warrior":  (1.20, 1.00),
-    "Paladin":  (1.15, 0.95),
-    "Hunter":   (1.00, 1.10),
-    "Rogue":    (0.90, 1.20),
-    "Priest":   (0.85, 0.85),
-    "Shaman":   (1.10, 1.05),
-    "Mage":     (0.80, 1.30),
-    "Warlock":  (0.85, 1.20),
-    "Druid":    (1.00, 1.00),
-}
 
 # ── Class passive proc table ───────────────────────────────────────────────
 # Each class has a chance-per-attack to trigger a unique passive effect.
