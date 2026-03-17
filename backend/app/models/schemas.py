@@ -102,6 +102,36 @@ class Player(CharacterBase):
     visited_zone_ids: List[str] = []  # All zone IDs ever generated for this character
     rested_xp: int = 0               # Bonus XP pool accumulated while logged out
     last_logout_time: float = 0.0    # Unix timestamp recorded on clean logout
+    active_dungeon_run_id: Optional[str] = None
+
+class DungeonMember(BaseModel):
+    id: str
+    name: str
+    char_class: str
+    role: str           # "tank" | "healer" | "dps"
+    hp: int
+    max_hp: int
+    damage: int
+    last_action: str = ""
+    is_alive: bool = True
+
+class DungeonRoom(BaseModel):
+    index: int
+    name: str
+    mobs: List[Mob] = []
+    cleared: bool = False
+
+class DungeonRun(BaseModel):
+    id: str
+    player_id: str
+    dungeon_name: str
+    dungeon_level: int
+    room_index: int = 0         # current room (0, 1, 2)
+    rooms: List[DungeonRoom] = []
+    party: List[DungeonMember] = []
+    combat_log: List[str] = []  # rolling 5 lines
+    status: str = "active"      # active | cleared | wiped
+    loot: List[dict] = []
 
 class Zone(BaseModel):
     id: str
