@@ -102,6 +102,34 @@ _VENDOR_ITEM_NAMES = {
     "off_hand":  ["Shield", "Buckler", "Tome"],
 }
 
+def _make_potions(level: int, zone_id: str) -> list:
+    """Return the two consumable types every vendor stocks, priced by zone level."""
+    heal_price = max(20, level * 8)
+    xp_price   = max(60, level * 22)
+    return [
+        {
+            "id":          f"pot_heal_{zone_id}_{random.randint(1000, 9999)}",
+            "name":        "Healing Potion",
+            "description": "Restores 40% of your maximum HP instantly. Shared 60s cooldown.",
+            "level":       1,
+            "rarity":      "Common",
+            "stats":       {"heal_pct": 40},
+            "slot":        "consumable",
+            "price":       heal_price,
+        },
+        {
+            "id":          f"pot_xp_{zone_id}_{random.randint(1000, 9999)}",
+            "name":        "Elixir of Insight",
+            "description": "Your next 5 kills grant +75% bonus XP. 5 min cooldown.",
+            "level":       1,
+            "rarity":      "Uncommon",
+            "stats":       {"xp_bonus_pct": 75, "xp_charges": 5},
+            "slot":        "consumable",
+            "price":       xp_price,
+        },
+    ]
+
+
 def _make_vendor(hub_id: str, zone_id: str, level: int) -> NPC:
     slots = list(_VENDOR_ITEM_NAMES.keys())
     stock_slots = random.sample(slots, min(5, len(slots)))
@@ -121,6 +149,8 @@ def _make_vendor(hub_id: str, zone_id: str, level: int) -> NPC:
             "slot":        slot,
             "price":       price,
         })
+    # Always stock potions — they're the primary gold sink
+    vendor_items.extend(_make_potions(level, zone_id))
     return NPC(
         id=f"vendor_{hub_id}",
         name=random.choice(_VENDOR_NAMES),

@@ -64,6 +64,10 @@ export default function Home() {
   const [attackCooldown, setAttackCooldown] = useState<number>(0);   // 0–100 %
   const [isAttacking, setIsAttacking] = useState<boolean>(false);
   const [lastCombatTime, setLastCombatTime] = useState<number>(0);
+  // Consumable system
+  const [healCd, setHealCd] = useState<number>(0);    // seconds remaining on heal cooldown
+  const [xpCd, setXpCd] = useState<number>(0);        // seconds remaining on elixir cooldown
+  const [activeXpBuff, setActiveXpBuff] = useState<{ bonus_pct: number; charges: number } | null>(null);
   // null → idle | 'choose' → pick what to delete | 'single' → confirm this char | 'all' → confirm wipe all
   const [resetConfirm, setResetConfirm] = useState<null | 'choose' | 'single' | 'all'>(null);
   const autoAttackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -134,6 +138,19 @@ export default function Home() {
     }, 50);
     return () => clearInterval(tick);
   }, [isAttacking]);
+
+  // ── Potion cooldown countdown timers ────────────────────────────────────
+  useEffect(() => {
+    if (healCd <= 0) return;
+    const t = setTimeout(() => setHealCd(p => Math.max(0, p - 1)), 1000);
+    return () => clearTimeout(t);
+  }, [healCd]);
+
+  useEffect(() => {
+    if (xpCd <= 0) return;
+    const t = setTimeout(() => setXpCd(p => Math.max(0, p - 1)), 1000);
+    return () => clearTimeout(t);
+  }, [xpCd]);
 
   // ── Out-of-combat HP regeneration ──────────────────────────────────────
   // 2 % max HP per second once 6s have passed since last hit.
@@ -634,6 +651,59 @@ export default function Home() {
   };
 
 
+  const renderPotions = () => {
+    const consumables = (player?.inventory || []).filter((i: any) => i.slot === 'consumable');
+    if (consumables.length === 0) return (
+      <div className="text-xs text-gray-600 italic">No potions — buy from vendor.</div>
+    );
+
+    // Deduplicate by name so stacked potions show as "Healing Potion ×3"
+    const counts: Record<string, { item: any; count: number }> = {};
+    consumables.forEach((i: any) => {
+      if (counts[i.name]) counts[i.name].count++;
+      else counts[i.name] = { item: i, count: 1 };
+    });
+
+    return (
+      <div className="space-y-1">
+        {Object.values(counts).map(({ item, count }) => {
+          const isHeal = !!item.stats?.heal_pct;
+          const isXp   = !!item.stats?.xp_bonus_pct;
+          const cd     = isHeal ? healCd : isXp ? xpCd : 0;
+          const onCd   = cd > 0;
+
+          return (
+            <div key={item.name} className="flex items-center gap-2">
+              <span className="text-base">{isHeal ? '🧪' : '✨'}</span>
+              <div className="flex-1 min-w-0">
+                <div className="text-xs text-gray-200 truncate">
+                  {item.name}{count > 1 ? ` ×${count}` : ''}
+                </div>
+                {isXp && activeXpBuff && (
+                  <div className="text-xs text-yellow-400">+{activeXpBuff.bonus_pct}% XP · {activeXpBuff.charges} kills left</div>
+                )}
+                {onCd && (
+                  <div className="text-xs text-gray-500">{cd}s cooldown</div>
+                )}
+              </div>
+              <button
+                className={`px-2 py-0.5 text-xs border transition-colors ${
+                  onCd
+                    ? 'text-gray-600 border-gray-800 cursor-not-allowed'
+                    : 'text-green-400 border-green-800 hover:text-green-300 hover:border-green-500'
+                }`}
+                disabled={onCd}
+                onClick={() => usePotion(item.id)}
+              >
+                {onCd ? `${cd}s` : 'USE'}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
   const renderWeather = () => {
     const weather = zone?.weather || "sunny";
     const weatherIcons: any = {
@@ -888,6 +958,28 @@ export default function Home() {
     return actions;
   };
 
+  const usePotion = async (itemId: string, silent = false) => {
+    if (!playerId) return;
+    try {
+      const res = await fetch(
+        `http://localhost:8000/action/use/${playerId}?item_id=${encodeURIComponent(itemId)}`,
+        { method: 'POST' }
+      );
+      const data = await res.json();
+      if (data.success) {
+        data.messages?.forEach((msg: string) => addLog(msg, 'system'));
+        setPlayer((prev: any) =>
+          prev ? { ...prev, hp: data.player_hp, inventory: (prev.inventory || []).filter((i: any) => i.id !== itemId) } : prev
+        );
+        if (data.heal_cd !== undefined) setHealCd(data.heal_cd);
+        if (data.xp_cd   !== undefined) setXpCd(data.xp_cd);
+        if (data.active_xp_buff !== undefined) setActiveXpBuff(data.active_xp_buff ?? null);
+      } else if (!silent) {
+        addLog(data.message || 'Cannot use that right now.', 'hint');
+      }
+    } catch { /* fire-and-forget */ }
+  };
+
   const executeCommand = async (cmd: string) => {
     let trimmedCmd = cmd.trim();
     if (!trimmedCmd && step !== 'intro') return;
@@ -1052,6 +1144,7 @@ export default function Home() {
         addLog("QUESTS    quests · accept [1/all] · turn in", "hint");
         addLog("SOCIAL    talk to [npc] · who", "hint");
         addLog("ITEMS     inventory · equip [item] · unequip [slot] · look [item/mob]", "hint");
+        addLog("POTIONS   use healing · use elixir  (or click USE in the panel)", "hint");
         addLog("ECONOMY   shop · buy [item] · sell [item]", "hint");
         addLog("TRAVEL    travel · travel dungeon (lv10+) · travel raid (lv20+)", "hint");
         addLog("Any other text → AI narrative engine", "hint");
@@ -1552,6 +1645,21 @@ export default function Home() {
                 setAutoAttackTarget(null);
                 setTarget(null);
               }
+
+              // Sync potion cooldowns + XP buff from authoritative backend values
+              if (data.heal_cd !== undefined) setHealCd(data.heal_cd);
+              if (data.xp_cd   !== undefined) setXpCd(data.xp_cd);
+              if (data.active_xp_buff !== undefined) setActiveXpBuff(data.active_xp_buff ?? null);
+
+              // Auto-use healing potion at ≤ 25 % HP
+              const lowHp = !data.player_dead && data.player_hp <= Math.floor((data.player_max_hp || 1) * 0.25);
+              if (lowHp && data.heal_cd === 0) {
+                const healPot = (player?.inventory || []).find((i: any) => i.slot === 'consumable' && i.stats?.heal_pct);
+                if (healPot) {
+                  addLog('⚡ AUTO: Healing Potion used!', 'system');
+                  usePotion(healPot.id, true);
+                }
+              }
             }, delay);
 
           } catch (err: any) {
@@ -1569,6 +1677,16 @@ export default function Home() {
           }
           setAutoAttackTarget(null);
           setTarget(null);
+        }
+      } else if (lowerCmd.startsWith('use ')) {
+        const itemName = lowerCmd.slice(4).trim();
+        const item = (player?.inventory || []).find((i: any) =>
+          i.slot === 'consumable' && i.name.toLowerCase().includes(itemName)
+        );
+        if (!item) {
+          addLog(`No consumable matching "${itemName}" in your bag.`, 'error');
+        } else {
+          await usePotion(item.id);
         }
       } else if (lowerCmd === 'inv' || lowerCmd === 'inventory') {
         const inv = player?.inventory || [];
@@ -2055,6 +2173,12 @@ export default function Home() {
                 <div className="panel-header header-equipment">EQUIPMENT</div>
                 <div style={{ height: '32px', width: '100%' }} />
                 <div>{renderPaperdoll()}</div>
+              </div>
+
+              <div className="pb-12">
+                <div className="panel-header header-bags">POTIONS</div>
+                <div style={{ height: '32px', width: '100%' }} />
+                <div>{renderPotions()}</div>
               </div>
 
               <div className="pb-12">

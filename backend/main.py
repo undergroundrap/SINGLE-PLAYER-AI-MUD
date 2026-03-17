@@ -17,8 +17,13 @@ import math
 # CONSTANTS
 # ──────────────────────────────────────────────
 
-ATTACK_COOLDOWN = 1.5   # seconds between attacks per player
-_attack_times: dict[str, float] = {}  # player_id -> last attack timestamp
+ATTACK_COOLDOWN      = 1.5    # seconds between attacks per player
+POTION_HEAL_COOLDOWN = 60.0   # shared healing potion cooldown
+POTION_XP_COOLDOWN   = 300.0  # elixir of insight cooldown (5 min)
+
+_attack_times:     dict[str, float] = {}  # player_id -> last attack timestamp
+_potion_cooldowns: dict[str, float] = {}  # "{player_id}:heal" | "{player_id}:xp" -> last use time
+_active_xp_buffs:  dict[str, dict]  = {}  # player_id -> {"bonus_pct": int, "charges": int}
 
 # Class stat multipliers (hp_mult, damage_mult)
 CLASS_STATS: dict[str, tuple[float, float]] = {
@@ -567,6 +572,19 @@ async def attack(player_id: str, mob_name: str):
         xp_base  = ScalingMath.get_xp_required(target_mob.level) // 8
         xp_mult  = 4 if target_mob.is_named else (2 if target_mob.is_elite else 1)
         xp_gained = xp_base * xp_mult
+
+        # Apply active Elixir of Insight buff if present
+        xp_buff = _active_xp_buffs.get(player_id)
+        if xp_buff:
+            bonus = int(xp_gained * xp_buff["bonus_pct"] / 100)
+            xp_gained += bonus
+            xp_buff["charges"] -= 1
+            if xp_buff["charges"] <= 0:
+                del _active_xp_buffs[player_id]
+                messages.append(f"✨ Elixir of Insight: +{bonus} XP! (faded)")
+            else:
+                messages.append(f"✨ Elixir of Insight: +{bonus} XP! ({xp_buff['charges']} kills left)")
+
         player.xp    += xp_gained
         player.kills += 1
 
@@ -674,6 +692,10 @@ async def attack(player_id: str, mob_name: str):
         "leveled_up":           leveled_up,
         "player_gold":          player.gold,
         "player_kills":         player.kills,
+        # Consumable state — frontend uses these to keep buff/cooldown display in sync
+        "active_xp_buff":       _active_xp_buffs.get(player_id),
+        "heal_cd":              max(0, int(POTION_HEAL_COOLDOWN - (now - _potion_cooldowns.get(f"{player_id}:heal", 0)))),
+        "xp_cd":                max(0, int(POTION_XP_COOLDOWN   - (now - _potion_cooldowns.get(f"{player_id}:xp",   0)))),
     }
 
 
@@ -721,6 +743,67 @@ async def unequip_item(player_id: str, slot: str):
 
     await vec_db.save_player(player_id, player.model_dump(mode='json'))
     return {"success": True, "unequipped": item.model_dump(mode='json'), "slot": slot}
+
+
+@app.post("/action/use/{player_id}")
+async def use_item(player_id: str, item_id: str):
+    """Use a consumable item from the player's inventory (potion, elixir, etc.)."""
+    p_data = await vec_db.get_player(player_id)
+    if not p_data:
+        raise HTTPException(status_code=404, detail="Player not found")
+    player = Player(**p_data)
+
+    item = next((i for i in player.inventory if i.id == item_id), None)
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not in inventory")
+    if item.slot != "consumable":
+        raise HTTPException(status_code=400, detail="That item cannot be used")
+
+    now = time.time()
+    messages = []
+
+    if "heal_pct" in item.stats:
+        cd_key = f"{player_id}:heal"
+        last   = _potion_cooldowns.get(cd_key, 0)
+        if now - last < POTION_HEAL_COOLDOWN:
+            wait = int(POTION_HEAL_COOLDOWN - (now - last))
+            return {"success": False, "message": f"Healing potion on cooldown. ({wait}s remaining)",
+                    "player_hp": player.hp, "player_max_hp": player.max_hp}
+        heal = max(1, int(player.max_hp * item.stats["heal_pct"] / 100))
+        player.hp = min(player.max_hp, player.hp + heal)
+        _potion_cooldowns[cd_key] = now
+        messages.append(f"🧪 {item.name}: Restored {heal} HP! ({player.hp}/{player.max_hp})")
+
+    elif "xp_bonus_pct" in item.stats:
+        cd_key  = f"{player_id}:xp"
+        last    = _potion_cooldowns.get(cd_key, 0)
+        if now - last < POTION_XP_COOLDOWN:
+            wait = int(POTION_XP_COOLDOWN - (now - last))
+            return {"success": False, "message": f"Elixir on cooldown. ({wait}s remaining)",
+                    "player_hp": player.hp, "player_max_hp": player.max_hp}
+        charges = item.stats.get("xp_charges", 5)
+        pct     = item.stats["xp_bonus_pct"]
+        _active_xp_buffs[player_id] = {"bonus_pct": pct, "charges": charges}
+        _potion_cooldowns[cd_key] = now
+        messages.append(f"✨ {item.name}: Next {charges} kills grant +{pct}% XP!")
+
+    else:
+        raise HTTPException(status_code=400, detail="Unknown consumable effect")
+
+    player.inventory = [i for i in player.inventory if i.id != item_id]
+    await vec_db.save_player(player_id, player.model_dump(mode='json'))
+
+    heal_cd_remaining = max(0, int(POTION_HEAL_COOLDOWN - (now - _potion_cooldowns.get(f"{player_id}:heal", 0))))
+    xp_cd_remaining   = max(0, int(POTION_XP_COOLDOWN   - (now - _potion_cooldowns.get(f"{player_id}:xp",   0))))
+    return {
+        "success":          True,
+        "messages":         messages,
+        "player_hp":        player.hp,
+        "player_max_hp":    player.max_hp,
+        "active_xp_buff":   _active_xp_buffs.get(player_id),
+        "heal_cd":          heal_cd_remaining,
+        "xp_cd":            xp_cd_remaining,
+    }
 
 
 @app.post("/action/rest/{player_id}")
