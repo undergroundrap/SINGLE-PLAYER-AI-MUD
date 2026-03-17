@@ -183,6 +183,10 @@ The dungeon and raid portal buttons are **always visible in the sidebar from lev
 
 **Death penalty:** 15% of current XP lost on death. No gear durability — the XP sting is enough to create tension without frustrating casual players.
 
+**Level-up scaling:** On every level-up, `max_hp` and `damage` are recalculated from `ScalingMath` **and** the class-specific multiplier from `CLASS_STATS` is re-applied. A Warrior's 1.2× HP advantage and a Mage's 1.3× damage advantage persist through every level, not just at character creation.
+
+**Out-of-combat HP regen:** 2% of max HP per second kicks in after 6 seconds without taking damage. The frontend regen timer syncs the new HP to the backend (`POST /action/rest/{player_id}`) every ~10 seconds — reconnecting or refreshing restores the regened HP rather than snapping back to the last combat value.
+
 ### Class Passive Procs
 `main.py → _apply_class_proc(player, target_mob, messages)`
 
@@ -201,6 +205,8 @@ Every class has a unique passive ability that **fires automatically** between th
 | Druid | ✦ BARKSKIN | 20% | Skip mob counter-attack |
 
 Proc fires after the player's hit resolves. If a proc kills the mob, the mob's counter-attack is skipped. If a dodge/barkskin proc fires, the counter-attack is also skipped regardless.
+
+**Proc damage scaling:** Damage and drain procs use `combat_engine.get_effective_max_hit(player)` — the same value used for normal attacks — so proc damage includes all equipped weapon bonuses. Upgrading from a grey dagger to a Legendary Staff increases both your normal hits and your proc hits.
 
 ### Combat System
 `combat_engine.py → CombatEngine`
@@ -221,9 +227,10 @@ damage = random(1, base_damage + weapon_stat_bonus)
 `main.py → _roll_loot(mob_level, loot_table, char_class, zone_tier)`
 
 - Rolls against the mob's loot table (chance per rarity tier)
-- **Zone tier multiplier** boosts all drop chances based on content type:
+- **Loot table order is best-to-worst** — the loop checks entries in order and returns the first rarity that passes. Legendary is checked before Epic, Epic before Rare, Rare before Common. This means the zone tier boost raises the probability of *better* rarities, not just Common. Named bosses are guaranteed Rare minimum (100% fallback), with real 40% Epic and 10% Legendary chances. If Common were checked first at a boosted 100%, it would block all higher rarities entirely.
+- **Zone tier multiplier** multiplies each rarity's chance based on content type:
   - Open world: ×1.0 (baseline)
-  - Dungeon: ×1.6 — meaningfully better loot than open world
+  - Dungeon: ×1.6 — meaningfully better quality distribution
   - Raid: ×2.8 — best loot in the game
 - Slot selection is **class-biased** using `_CLASS_SLOT_WEIGHTS` — Mages get more off-hand/staff drops, Warriors get more armor/melee drops
 - Weapon names are class-appropriate via `_CLASS_WEAPONS` — Mages get Staff/Wand/Tome, Rogues get Dagger/Blade/Shiv
@@ -409,6 +416,7 @@ All endpoints are in `backend/main.py`. Backend runs on `http://localhost:8000`.
 | `POST` | `/action/equip/{player_id}` | Equip item from inventory. Param: `item_id` |
 | `POST` | `/action/unequip/{player_id}` | Move equipped item back to bag. Param: `slot` (`head`, `chest`, `hands`, `legs`, `feet`, `main_hand`, `off_hand`) |
 | `POST` | `/action/talk/{player_id}` | Talk to NPC. Param: `npc_name`. Returns `dialogue`, `offered_quests`, vendor fields |
+| `POST` | `/action/rest/{player_id}` | Persist out-of-combat HP regen. Param: `hp` (clamped to `[1, max_hp]` server-side). Called by frontend timer every ~10 s while regenerating. |
 
 ### Quests
 | Method | Path | Description |
