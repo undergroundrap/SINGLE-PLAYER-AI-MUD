@@ -527,11 +527,18 @@ async def attack(player_id: str, mob_name: str):
     zone = Zone(**z_data)
     loc = next((l for l in zone.locations if l.id == player.current_location_id), None)
 
+    # ── Restore respawned mobs to full HP ──────
+    # respawn_at is never cleared — once the timer fires the mob is "alive"
+    # but still has hp=0 from when it died. Reset here before any targeting.
+    for m in (loc.mobs if loc else []):
+        if m.respawn_at is not None and now >= m.respawn_at:
+            m.hp = m.max_hp
+            m.respawn_at = None
+
     # ── Find a living mob ──────────────────────
     # Prefer exact name match so "attack Boar" never accidentally targets
     # "Veteran Boar". Fall back to substring only if no exact match exists.
-    living = [m for m in (loc.mobs if loc else [])
-              if (m.respawn_at is None or now >= m.respawn_at)]
+    living = [m for m in (loc.mobs if loc else []) if m.respawn_at is None]
     target_mob = (
         next((m for m in living if m.name.lower() == mob_name.lower()), None)
         or next((m for m in living if mob_name.lower() in m.name.lower()), None)
