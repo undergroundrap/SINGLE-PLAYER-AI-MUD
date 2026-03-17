@@ -643,6 +643,8 @@ async def attack(player_id: str, mob_name: str):
         "leveled_up":           leveled_up,
         "player_gold":          player.gold,
         "player_kills":         player.kills,
+        # Return gear score whenever equipment or level changes so UI stays in sync
+        "gear_score":           calculate_gear_score(player) if (leveled_up or auto_equipped) else None,
         # Consumable state — frontend uses these to keep buff/cooldown display in sync
         "active_xp_buff":       _active_xp_buffs.get(player_id),
         "heal_cd":              max(0, int(POTION_HEAL_COOLDOWN - (now - _potion_cooldowns.get(f"{player_id}:heal", 0)))),
@@ -1421,9 +1423,15 @@ async def flee_combat(player_id: str, mob_name: str):
     zone = Zone(**z_data)
     loc = next((l for l in zone.locations if l.id == player.current_location_id), None)
 
+    # Restore any mobs whose respawn timer has fired (same cleanup as attack endpoint)
+    for m in (loc.mobs if loc else []):
+        if m.respawn_at is not None and now >= m.respawn_at:
+            m.hp = m.max_hp
+            m.respawn_at = None
+
     target_mob = next(
         (m for m in (loc.mobs if loc else [])
-         if mob_name.lower() in m.name.lower() and (m.respawn_at is None or now >= m.respawn_at)),
+         if mob_name.lower() in m.name.lower() and m.respawn_at is None),
         None
     )
     if not target_mob:
@@ -1431,6 +1439,8 @@ async def flee_combat(player_id: str, mob_name: str):
 
     messages = []
     fled = random.random() < 0.60
+    player_dead = False
+    respawn_location_id = None
 
     if fled:
         messages.append(f"You successfully flee from {target_mob.name}!")
@@ -1445,17 +1455,19 @@ async def flee_combat(player_id: str, mob_name: str):
             player.hp = max(1, player.max_hp // 2)
             if zone.locations:
                 player.current_location_id = zone.locations[0].id
+                respawn_location_id = zone.locations[0].id
             penalty_msg = f" Lost {xp_penalty:,} XP." if xp_penalty else ""
             messages.append(f"☠ You were slain while fleeing!{penalty_msg} You wake at the settlement.")
 
     await vec_db.save_player(player_id, player.model_dump(mode='json'))
     return {
-        "success":    True,
-        "fled":       fled,
-        "messages":   messages,
-        "player_hp":  player.hp,
-        "player_xp":  player.xp,
-        "player_dead": not fled and player.hp <= 1,
+        "success":             True,
+        "fled":                fled,
+        "messages":            messages,
+        "player_hp":           player.hp,
+        "player_xp":           player.xp,
+        "player_dead":         player_dead,
+        "respawn_location_id": respawn_location_id,
     }
 
 

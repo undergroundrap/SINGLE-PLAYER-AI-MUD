@@ -1970,6 +1970,9 @@ export default function Home() {
                 }
               }
 
+              // Sync gear score after level-up or auto-equip
+              if (data.gear_score != null) setGearScore(data.gear_score);
+
               // Sync potion cooldowns + XP buff from authoritative backend values
               if (data.heal_cd !== undefined) setHealCd(data.heal_cd);
               if (data.xp_cd   !== undefined) setXpCd(data.xp_cd);
@@ -2242,6 +2245,9 @@ export default function Home() {
               ...prev,
               hp: data.player_hp ?? prev.hp,
               xp: data.player_xp ?? prev.xp,
+              ...(data.player_dead && data.respawn_location_id
+                ? { current_location_id: data.respawn_location_id }
+                : {}),
             }));
             if (data.player_dead) {
               describeEntity(autoAttackTarget || 'the enemy', { isDeath: true });
