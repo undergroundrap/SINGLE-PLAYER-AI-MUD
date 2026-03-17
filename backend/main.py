@@ -1252,6 +1252,33 @@ async def vendor_sell(player_id: str, item_id: str):
     }
 
 
+@app.post("/vendor/sell_junk/{player_id}")
+async def vendor_sell_junk(player_id: str):
+    """Sell every Common-rarity non-consumable item in inventory at once."""
+    p_data = await vec_db.get_player(player_id)
+    if not p_data: raise HTTPException(status_code=404, detail="Player not found")
+    player = Player(**p_data)
+
+    junk = [i for i in player.inventory if i.rarity == "Common" and i.slot != "consumable"]
+    if not junk:
+        return {"success": True, "message": "No Common items to sell.", "gold_gained": 0,
+                "player_gold": player.gold, "sold_count": 0}
+
+    total_gold = sum(max(1, i.level * sum(i.stats.values()) * 2) for i in junk)
+    player.gold += total_gold
+    junk_ids = {i.id for i in junk}
+    player.inventory = [i for i in player.inventory if i.id not in junk_ids]
+
+    await vec_db.save_player(player_id, player.model_dump(mode='json'))
+    return {
+        "success":    True,
+        "message":    f"Sold {len(junk)} Common item(s) for {total_gold} gold.",
+        "gold_gained": total_gold,
+        "player_gold": player.gold,
+        "sold_count":  len(junk),
+    }
+
+
 # ──────────────────────────────────────────────
 # FLEE
 # ──────────────────────────────────────────────

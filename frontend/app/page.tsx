@@ -1145,7 +1145,7 @@ export default function Home() {
         addLog("SOCIAL    talk to [npc] · who", "hint");
         addLog("ITEMS     inventory · equip [item] · unequip [slot] · look [item/mob]", "hint");
         addLog("POTIONS   use healing · use elixir  (or click USE in the panel)", "hint");
-        addLog("ECONOMY   shop · buy [item] · sell [item]", "hint");
+        addLog("ECONOMY   shop · buy [item] · sell [item] · sell junk", "hint");
         addLog("TRAVEL    travel · travel dungeon (lv10+) · travel raid (lv20+)", "hint");
         addLog("Any other text → AI narrative engine", "hint");
         addLog("══════════════════════════════", "system");
@@ -1960,6 +1960,23 @@ export default function Home() {
               addLog(`${idx + 1}. [sell ${item.name}] — ${item.rarity} · ${statStr} · ~${sellPrice}g`, "hint");
             });
           }
+        }
+
+      } else if (lowerCmd === 'sell junk' || lowerCmd === 'sell all') {
+        if (!playerId) { addLog("Character not found.", "error"); }
+        else {
+          try {
+            const res = await fetch(`http://localhost:8000/vendor/sell_junk/${playerId}`, { method: 'POST' });
+            const data = await res.json();
+            addLog(data.message, data.sold_count > 0 ? "system" : "hint");
+            if (data.sold_count > 0) {
+              setPlayer((prev: any) => ({
+                ...prev,
+                gold: data.player_gold,
+                inventory: (prev.inventory || []).filter((i: any) => i.rarity !== "Common" || i.slot === "consumable"),
+              }));
+            }
+          } catch (err: any) { addLog(`Sell Error: ${err.message}`, "error"); }
         }
 
       } else if (lowerCmd.startsWith('sell ')) {
