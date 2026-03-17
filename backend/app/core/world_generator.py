@@ -104,8 +104,8 @@ _VENDOR_ITEM_NAMES = {
 
 def _make_potions(level: int, zone_id: str) -> list:
     """Return the two consumable types every vendor stocks, priced by zone level."""
-    heal_price = max(20, level * 8)
-    xp_price   = max(60, level * 22)
+    heal_price = max(10, level * 8)   # 10g minimum so level-1 chars need ~10 kills, not 20
+    xp_price   = max(40, level * 22)
     return [
         {
             "id":          f"pot_heal_{zone_id}_{random.randint(1000, 9999)}",

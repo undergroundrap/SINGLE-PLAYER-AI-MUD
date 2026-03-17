@@ -42,6 +42,9 @@ CLASS_STATS: dict[str, tuple[float, float]] = {
 # Each class has a chance-per-attack to trigger a unique passive effect.
 # "damage" = bonus damage to mob | "heal" = restore HP | "drain" = damage + lifesteal
 # "dodge"  = skip mob counter-attack entirely this tick
+# Druid: heal (REJUVENATION) — 25 % chance, restores 15 % max HP. Differentiates from
+#   Rogue (dodge) which previously made Druid a strictly-dominated choice. Druid is now
+#   the self-sustaining generalist (1.0× HP/dmg, frequent self-heals).
 _CLASS_PROCS: dict[str, dict] = {
     "Warrior":  {"chance": 0.20, "type": "damage", "mult": 2.0,  "label": "⚔ BATTLE FURY"},
     "Paladin":  {"chance": 0.20, "type": "heal",   "mult": 0.15, "label": "✦ DIVINE GRACE"},
@@ -51,7 +54,7 @@ _CLASS_PROCS: dict[str, dict] = {
     "Shaman":   {"chance": 0.20, "type": "damage", "mult": 1.8,  "label": "⚡ CHAIN LIGHTNING"},
     "Mage":     {"chance": 0.25, "type": "damage", "mult": 1.8,  "label": "✦ ARCANE SURGE"},
     "Warlock":  {"chance": 0.20, "type": "drain",  "mult": 1.5,  "label": "✧ SOUL DRAIN"},
-    "Druid":    {"chance": 0.20, "type": "dodge",  "mult": 0,    "label": "✦ BARKSKIN"},
+    "Druid":    {"chance": 0.25, "type": "heal",   "mult": 0.15, "label": "✦ REJUVENATION"},
 }
 
 def _apply_class_proc(player: "Player", target_mob: "Mob", messages: list) -> bool:
