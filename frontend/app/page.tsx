@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 interface LogEntry {
   text: string;
   type: 'system' | 'player' | 'hint' | 'combat' | 'error';
+  id?: string; // used by description slots so they can be filled in-place
 }
 
 const RACES = ["Human", "Orc", "Dwarf", "Elf", "Undead", "Goblin", "Gnome", "Troll"];
@@ -98,6 +99,7 @@ export default function Home() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const seenEntities = useRef<Set<string>>(new Set());
+  const isInCombatRef = useRef(false); // kept in sync with autoAttackTarget for use inside intervals
   const chatMsgCountRef = useRef(0);
   const idleChatRef = useRef<{ zone: any; player: any; globalChat: any[] }>({ zone: null, player: null, globalChat: [] });
   const lastRegenSyncRef = useRef<number>(0); // timestamp of last HP sync to backend
@@ -337,10 +339,16 @@ export default function Home() {
     idleChatRef.current = { zone, player, globalChat };
   }, [zone, player, globalChat]);
 
+  // Keep combat ref in sync — lets timers skip during active combat without stale closures
+  useEffect(() => {
+    isInCombatRef.current = autoAttackTarget !== null;
+  }, [autoAttackTarget]);
+
   // Sim players occasionally initiate chat unprompted (~every 30-60s, 60% fire chance)
   useEffect(() => {
     if (step !== 'game') return;
     const interval = setInterval(async () => {
+      if (isInCombatRef.current) return; // combat takes priority — no idle chatter during a fight
       if (Math.random() > 0.6) return;
       const { zone: z, player: p, globalChat: chat } = idleChatRef.current;
       const allSimNames = (z?.simulated_players || []).map((sp: any) => sp.name).filter(Boolean);
@@ -1016,6 +1024,16 @@ export default function Home() {
     const key = opts.isDeath ? `death:${name.toLowerCase()}` : name.toLowerCase();
     if (!opts.isDeath && seenEntities.current.has(key)) return;
     if (!opts.isDeath) seenEntities.current.add(key);
+
+    // Reserve a slot in the log NOW so the description appears adjacent to the
+    // trigger message even if other combat ticks fire while the AI is responding.
+    const slotId = `desc_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    setLogs(prev => [...prev,
+      { text: "─────────────────────────────────────", type: "system" as const },
+      { text: "...", type: "hint" as const, id: slotId },
+      { text: "─────────────────────────────────────", type: "system" as const },
+    ]);
+
     const params = new URLSearchParams({
       name,
       entity_type: opts.isDeath ? 'death' : opts.isNpc ? 'npc' : 'creature',
@@ -1027,11 +1045,24 @@ export default function Home() {
       .then(r => r.json())
       .then(d => {
         if (d.description) {
-          addLog("─────────────────────────────────────", "system");
-          addLog(d.description, "hint");
-          addLog("─────────────────────────────────────", "system");
+          // Fill the reserved slot in-place — stays where it was inserted
+          setLogs(prev => prev.map(e => e.id === slotId ? { ...e, text: d.description } : e));
+        } else {
+          // No content — remove the whole placeholder block
+          setLogs(prev => {
+            const idx = prev.findIndex(e => e.id === slotId);
+            if (idx < 0) return prev;
+            return prev.filter((_, i) => i < idx - 1 || i > idx + 1);
+          });
         }
-      }).catch(() => {});
+      })
+      .catch(() => {
+        setLogs(prev => {
+          const idx = prev.findIndex(e => e.id === slotId);
+          if (idx < 0) return prev;
+          return prev.filter((_, i) => i < idx - 1 || i > idx + 1);
+        });
+      });
   };
 
   const streamNarrative = async (action: string) => {
@@ -2116,7 +2147,11 @@ export default function Home() {
 
               if (allDone) break;
 
-              // Wait for cooldown, animate progress bar, then gather again
+              // Show cooldown in chat and animate the progress bar
+              const resource = data.quest_updates?.[0]
+                ? (player?.active_quests || []).find((q: any) => q.id === data.quest_updates[0].id)?.collect_name || "resources"
+                : "resources";
+              addLog(`Searching for ${resource}... (${GATHER_CD / 1000}s)`, "hint");
               await new Promise<void>(resolve => {
                 const start = Date.now();
                 const tick = () => {
@@ -3083,18 +3118,18 @@ export default function Home() {
                 ) && (
                   <button
                     type="button"
-                    className={`tool-button relative overflow-hidden !text-green-400/90 !border-green-900/50 ${isGathering ? 'opacity-60' : ''}`}
+                    className={`tool-button relative overflow-hidden !text-green-400/90 !border-green-900/50 ${isGathering ? 'opacity-50 cursor-not-allowed animate-pulse' : ''}`}
                     disabled={isGathering}
                     onClick={() => executeCommand('gather')}
                     title="Forage for resources"
                   >
-                    {gatherCooldown > 0 && (
+                    {(isGathering || gatherCooldown > 0) && (
                       <span
-                        className="absolute inset-0 origin-left bg-green-900/30 transition-none"
-                        style={{ transform: `scaleX(${gatherCooldown / 100})` }}
+                        className="absolute inset-0 origin-left bg-green-900/40 transition-none"
+                        style={{ transform: `scaleX(${gatherCooldown > 0 ? gatherCooldown / 100 : 1})` }}
                       />
                     )}
-                    <span className="relative">Gather</span>
+                    <span className="relative">{isGathering ? 'Gathering...' : 'Gather'}</span>
                     <span className="keybind-hint">{currentIdx++}</span>
                   </button>
                 )}
