@@ -22,6 +22,7 @@ ATTACK_COOLDOWN      = 1.5    # seconds between attacks per player
 GATHER_COOLDOWN      = 8.0    # seconds between gather actions
 POTION_HEAL_COOLDOWN = 60.0   # shared healing potion cooldown
 POTION_XP_COOLDOWN   = 300.0  # elixir of insight cooldown (5 min)
+BAG_SIZE             = 16     # maximum inventory slots (matches UI grid)
 
 _attack_times:     dict[str, float] = {}  # player_id -> last attack timestamp
 _gather_times:     dict[str, float] = {}  # player_id -> last gather timestamp
@@ -302,8 +303,19 @@ async def complete_quest(player_id: str, quest_id: str):
     item_reward = None
     if quest.item_reward:
         item_reward = Item(**quest.item_reward) if isinstance(quest.item_reward, dict) else quest.item_reward
-        player.inventory.append(item_reward)
-        messages.append(f"Item Reward: {item_reward.name}")
+        if len(player.inventory) < BAG_SIZE:
+            player.inventory.append(item_reward)
+            messages.append(f"Item Reward: {item_reward.name}")
+        else:
+            # Bags full — auto-equip if it's an upgrade, otherwise warn
+            current = player.equipment.get(item_reward.slot) if item_reward.slot else None
+            curr_sum = sum(current.stats.values()) if current and current.stats else 0
+            new_sum = sum(item_reward.stats.values()) if item_reward.stats else 0
+            if item_reward.slot and new_sum > curr_sum:
+                player.equipment[item_reward.slot] = item_reward
+                messages.append(f"Item Reward: {item_reward.name} (auto-equipped — bags were full)")
+            else:
+                messages.append(f"⚠ Bags full — [{item_reward.name}] left on the ground! Sell junk first.")
 
     leveled = _apply_levelups(player, messages)
 
@@ -540,11 +552,15 @@ async def attack(player_id: str, mob_name: str):
             current = player.equipment.get(loot_item.slot)
             current_sum = sum(current.stats.values()) if current and current.stats else 0
             new_sum = sum(loot_item.stats.values())
+            bag_space = len(player.inventory) < BAG_SIZE
             if new_sum > current_sum:
-                # Auto-equip the upgrade, swap old gear to inventory
-                if current and current.name != "None":
+                # Auto-equip the upgrade; displaced item only goes to bag if space exists
+                has_displaced = current and current.name != "None"
+                if has_displaced and bag_space:
                     displaced_item = current
                     player.inventory.append(current)
+                elif has_displaced:
+                    messages.append(f"⚠ Bags full — [{current.name}] left on the ground!")
                 player.equipment[loot_item.slot] = loot_item
                 auto_equipped = True
                 stat_key = next(iter(loot_item.stats), "stat")
@@ -553,17 +569,19 @@ async def attack(player_id: str, mob_name: str):
                     f"⬆ Auto-equipped [{loot_item.name}] (+{new_sum} {stat_key})"
                     f" — replaces {displaced_item.name if displaced_item else 'empty slot'} ({old_label})"
                 )
-            else:
+            elif bag_space:
                 player.inventory.append(loot_item)
                 stat_key = next(iter(loot_item.stats), "stat")
-                if current_sum:
-                    cmp = f" (equipped: +{current_sum} {stat_key})"
-                else:
-                    cmp = ""
+                cmp = f" (equipped: +{current_sum} {stat_key})" if current_sum else ""
                 messages.append(f"🎒 [{loot_item.name}] +{new_sum} {stat_key} ({loot_item.rarity}){cmp}")
+            else:
+                messages.append(f"⚠ Bags full — [{loot_item.name}] left on the ground!")
         elif loot_item:
-            player.inventory.append(loot_item)
-            messages.append(f"🎒 [{loot_item.name}] ({loot_item.rarity}) added to bag")
+            if len(player.inventory) < BAG_SIZE:
+                player.inventory.append(loot_item)
+                messages.append(f"🎒 [{loot_item.name}] ({loot_item.rarity}) added to bag")
+            else:
+                messages.append(f"⚠ Bags full — [{loot_item.name}] left on the ground!")
 
         # Named kill or Epic+ drop — flag for special frontend treatment
         if target_mob.is_named or (loot_item and loot_item.rarity in ("Epic", "Legendary")):
@@ -761,11 +779,15 @@ async def equip_item(player_id: str, item_id: str):
 
     # Swap: put current equipped item back into inventory (if it has a real name)
     current = player.equipment.get(item.slot)
-    if current and current.name != "None":
-        player.inventory.append(current)
+    inv_without_item = [i for i in player.inventory if i.id != item_id]
+    has_displaced = current and current.name != "None"
+    if has_displaced and len(inv_without_item) >= BAG_SIZE:
+        raise HTTPException(status_code=400, detail=f"Bags full — unequip or sell something to make room for [{current.name}].")
+    if has_displaced:
+        inv_without_item.append(current)
 
     player.equipment[item.slot] = item
-    player.inventory = [i for i in player.inventory if i.id != item_id]
+    player.inventory = inv_without_item
 
     await vec_db.save_player(player_id, player.model_dump(mode='json'))
     return {"success": True, "equipped": item.model_dump(mode='json'), "slot": item.slot,
@@ -782,6 +804,8 @@ async def unequip_item(player_id: str, slot: str):
     item = player.equipment.get(slot)
     if not item or item.name == "None":
         raise HTTPException(status_code=400, detail=f"Nothing equipped in {slot}")
+    if len(player.inventory) >= BAG_SIZE:
+        raise HTTPException(status_code=400, detail=f"Bags full — sell something before unequipping [{item.name}].")
 
     player.inventory.append(item)
     # Reset slot to empty sentinel
@@ -1301,6 +1325,8 @@ async def vendor_buy(player_id: str, npc_name: str, item_id: str):
     price = item_data.get("price", 0)
     if player.gold < price:
         return {"success": False, "message": f"Not enough gold. Need {price}, have {player.gold}."}
+    if len(player.inventory) >= BAG_SIZE:
+        return {"success": False, "message": "Bags full. Sell something to make room."}
 
     player.gold -= price
     bought = Item(**{k: v for k, v in item_data.items() if k != "price"})
@@ -1326,9 +1352,9 @@ async def vendor_sell(player_id: str, item_id: str):
     if not item:
         raise HTTPException(status_code=404, detail="Item not in inventory")
 
-    # Sell price: level * stat_total * 2 (roughly 40-50% of buy price)
+    # Sell price: ~40% of vendor buy price (vendor = stat * level * 2, sell = stat * level * 0.8)
     stat_total = sum(item.stats.values()) if item.stats else 0
-    sell_price = max(1, item.level * stat_total * 2)
+    sell_price = max(1, int(item.level * stat_total * 0.8))
 
     player.gold += sell_price
     player.inventory = [i for i in player.inventory if i.id != item_id]
@@ -1354,7 +1380,7 @@ async def vendor_sell_junk(player_id: str):
         return {"success": True, "message": "No Common items to sell.", "gold_gained": 0,
                 "player_gold": player.gold, "sold_count": 0}
 
-    total_gold = sum(max(1, i.level * sum(i.stats.values()) * 2) for i in junk)
+    total_gold = sum(max(1, int(i.level * sum(i.stats.values()) * 0.8)) for i in junk)
     player.gold += total_gold
     junk_ids = {i.id for i in junk}
     player.inventory = [i for i in player.inventory if i.id not in junk_ids]

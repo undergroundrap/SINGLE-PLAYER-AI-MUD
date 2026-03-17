@@ -21,6 +21,7 @@ combat_engine = CombatEngine()
 # ── Gear score ───────────────────────────────────────────────────────────────
 _RARITY_GS = {"Common": 1.0, "Uncommon": 1.5, "Rare": 2.5, "Epic": 4.0, "Legendary": 7.0}
 RAID_GEAR_MIN = 100  # minimum gear score to enter a raid
+BAG_SIZE      = 16   # must match constant in main.py
 
 def calculate_gear_score(player) -> int:
     """Sum of all equipped item stat values × rarity multiplier."""
@@ -369,7 +370,7 @@ def resolve_round(run: DungeonRun, player: Player) -> dict:
     player.xp   += xp_gained
     player.gold += gold_gained
     if player_dead:
-        xp_penalty = int(player.xp * 0.15)
+        xp_penalty = int(player.xp * 0.05)
         player.xp  = max(0, player.xp - xp_penalty)
         player.deaths = (player.deaths or 0) + 1
         player.hp = max(1, player.max_hp // 2)
@@ -415,8 +416,11 @@ def resolve_round(run: DungeonRun, player: Player) -> dict:
                 item = _roll_loot(boss.level, guaranteed_table,
                                   char_class=player.char_class, zone_tier=tier)
                 if item:
-                    player.inventory.append(item)
-                    loot_items.append(item.model_dump(mode='json'))
+                    if len(player.inventory) < BAG_SIZE:
+                        player.inventory.append(item)
+                        loot_items.append(item.model_dump(mode='json'))
+                    else:
+                        loot_items.append({**item.model_dump(mode='json'), "_dropped": True})
 
     return {
         "run":          run.model_dump(mode='json'),

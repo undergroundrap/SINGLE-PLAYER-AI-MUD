@@ -901,7 +901,10 @@ export default function Home() {
                     level: data.player_level, inventory: data.player_inventory ?? prev.inventory,
                   } : prev);
                   if (data.loot?.length) {
-                    data.loot.forEach((item: any) => addLog(`🎒 ${item.name} (${item.rarity}) dropped!`, 'system'));
+                    data.loot.forEach((item: any) => {
+                      if (item._dropped) addLog(`⚠ Bags full — [${item.name}] left on the ground!`, 'error');
+                      else addLog(`🎒 ${item.name} (${item.rarity}) dropped!`, 'system');
+                    });
                   }
                   if (data.leveled_up) addLog(`⬆ LEVEL UP! Now level ${data.player_level}!`, 'system');
                   if (data.wiped) {
@@ -2261,7 +2264,7 @@ export default function Home() {
             sellable.forEach((item: any, idx: number) => {
               const statStr = item.stats ? Object.entries(item.stats).map(([k, v]) => `+${v} ${k}`).join(', ') : '';
               const statTotal = item.stats ? Object.values(item.stats as Record<string, number>).reduce((a: number, b: number) => a + b, 0) : 0;
-              const sellPrice = Math.max(1, (item.level || 1) * statTotal * 2);
+              const sellPrice = Math.max(1, Math.floor((item.level || 1) * statTotal * 0.8));
               addLog(`${idx + 1}. [sell ${item.name}] — ${item.rarity} · ${statStr} · sells for ~${sellPrice}g`, "hint");
             });
           }
@@ -2322,7 +2325,7 @@ export default function Home() {
             inv.forEach((item: any, idx: number) => {
               const statStr = item.stats ? Object.entries(item.stats).map(([k, v]) => `+${v} ${k}`).join(', ') : '';
               const statTotal = item.stats ? Object.values(item.stats as Record<string, number>).reduce((a: number, b: number) => a + b, 0) : 0;
-              const sellPrice = Math.max(1, (item.level || 1) * statTotal * 2);
+              const sellPrice = Math.max(1, Math.floor((item.level || 1) * statTotal * 0.8));
               addLog(`${idx + 1}. [sell ${item.name}] — ${item.rarity} · ${statStr} · ~${sellPrice}g`, "hint");
             });
           }
@@ -2617,7 +2620,12 @@ export default function Home() {
               </div>
 
               <div className="pb-12">
-                <div className="panel-header header-bags">BAGS</div>
+                <div className="panel-header header-bags">
+                  BAGS
+                  <span className={`ml-2 text-[10px] font-normal ${(player?.inventory?.length || 0) >= 16 ? 'text-red-400' : 'text-white/30'}`}>
+                    {player?.inventory?.length || 0}/16
+                  </span>
+                </div>
                 <div style={{ height: '32px', width: '100%' }} />
                 <div>{renderInventory()}</div>
               </div>
