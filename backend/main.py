@@ -901,6 +901,13 @@ async def player_login(player_id: str):
         raise HTTPException(status_code=404, detail="Player not found")
     player = Player(**p_data)
 
+    dirty = False
+
+    # Clear orphaned dungeon run if server restarted and run is gone from memory
+    if player.active_dungeon_run_id and player.active_dungeon_run_id not in _dungeon_runs:
+        player.active_dungeon_run_id = None
+        dirty = True
+
     if player.last_logout_time > 0:
         hours_offline = (time.time() - player.last_logout_time) / 3600.0
         rest_rate     = player.next_level_xp / 8  # 1 full level's rest in 8 hours
@@ -908,6 +915,9 @@ async def player_login(player_id: str):
         cap           = int(player.next_level_xp * 1.5)
         player.rested_xp       = min(player.rested_xp + rest_gained, cap)
         player.last_logout_time = 0.0  # clear — they're online now
+        dirty = True
+
+    if dirty:
         await vec_db.save_player(player_id, player.model_dump(mode='json'))
 
     return {

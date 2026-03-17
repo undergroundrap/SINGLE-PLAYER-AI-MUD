@@ -1462,10 +1462,19 @@ export default function Home() {
             });
             addLog(`You look at ${targetEntity.name}. ${targetEntity.description || (targetEntity.role === 'quest_giver' ? "They watch you expectantly." : "They seem aware of your presence.")}`, "hint");
             return;
-          } else {
-            addLog(`Nothing by the name of '${targetStr}' is visible here.`, "error");
+          }
+
+          // Check inventory for item
+          const invItem = (player?.inventory || []).find((i: any) => i.name?.toLowerCase().includes(targetStr));
+          if (invItem) {
+            const statLines = Object.entries(invItem.stats || {}).map(([k, v]) => `${k} +${v}`).join(', ');
+            addLog(`${invItem.name} [${invItem.rarity || 'Common'}] — ${invItem.slot || 'item'} · lv${invItem.level || 1}`, "hint");
+            if (statLines) addLog(`  Stats: ${statLines}`, "hint");
+            if (invItem.description) addLog(`  "${invItem.description}"`, "hint");
             return;
           }
+
+          addLog(`Nothing by the name of '${targetStr}' is visible here.`, "error");
         }
 
         addLog(`--- ${loc?.name || zone?.name || "The Void"} ---`, "system");
@@ -1580,6 +1589,14 @@ export default function Home() {
             }));
             addLog(`Quest Accepted: ${q.title}`, "system");
             addLog(q.description, "system");
+            // Show zone gate progress hint so player knows what's needed to travel
+            const zoneQuestsDoneSoFar = (zone?.quests || []).filter((zq: any) =>
+              player?.completed_quest_ids?.includes(zq.id)
+            ).length;
+            if (zoneQuestsDoneSoFar < 2) {
+              const needed = 2 - zoneQuestsDoneSoFar;
+              addLog(`✦ Complete ${needed} more quest${needed === 1 ? '' : 's'} in this zone to unlock travel.`, "hint");
+            }
           } catch (err: any) {
             addLog(`Error supporting ${q.title}: ${err.message}`, "error");
           }
@@ -2774,7 +2791,7 @@ export default function Home() {
                             className="action-item text-accent font-bold mt-4 animate-pulse"
                             onClick={() => executeCommand('travel')}
                           >
-                            ➤ [travel to next zone] ({zoneQuestsDone}/5 quests done)
+                            ➤ [travel to next zone] ({zoneQuestsDone}/2 quests done)
                           </div>
                         )}
                         {/* Dungeon — always visible, locked until level 10 */}
