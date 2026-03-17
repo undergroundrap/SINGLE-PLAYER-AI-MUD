@@ -82,6 +82,9 @@ export default function Home() {
   // Rested XP
   const [restedXp, setRestedXp] = useState<number>(0);
   const [restedXpCap, setRestedXpCap] = useState<number>(0);
+  // Dungeon
+  const [dungeonRun, setDungeonRun] = useState<any>(null);
+  const [dungeonAttacking, setDungeonAttacking] = useState<boolean>(false);
   // null → idle | 'choose' → pick what to delete | 'single' → confirm this char | 'all' → confirm wipe all
   const [resetConfirm, setResetConfirm] = useState<null | 'choose' | 'single' | 'all'>(null);
   const autoAttackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -724,6 +727,178 @@ export default function Home() {
             </div>
           );
         })}
+      </div>
+    );
+  };
+
+  // ── Dungeon combat theater ────────────────────────────────────────────────
+  const renderDungeonTheater = () => {
+    if (!dungeonRun) return null;
+    const run     = dungeonRun;
+    const room    = run.rooms?.[run.room_index];
+    const aliveMobs   = (room?.mobs || []).filter((m: any) => m.hp > 0);
+    const boss    = room?.mobs?.find((m: any) => m.is_named || m.is_elite) || room?.mobs?.[0];
+    const primaryMob  = aliveMobs[0] || boss;
+    const roomCleared = room?.cleared || aliveMobs.length === 0;
+    const isLastRoom  = run.room_index >= (run.rooms?.length ?? 1) - 1;
+    const hpPct = (hp: number, max: number) => Math.max(0, Math.min(100, (hp / (max || 1)) * 100));
+
+    const hpColor = (pct: number) =>
+      pct > 60 ? 'bg-green-600' : pct > 30 ? 'bg-yellow-500' : 'bg-red-600';
+
+    return (
+      <div className="glass-panel flex-1 flex flex-col p-3 gap-2 font-mono text-xs">
+        {/* Header */}
+        <div className="flex justify-between items-center border-b border-white/10 pb-2">
+          <span className="text-purple-300 font-bold tracking-wider">
+            ⚔ {run.dungeon_name?.toUpperCase()}
+          </span>
+          <span className="text-gray-500">
+            Room {run.room_index + 1} / {run.rooms?.length ?? 3}
+          </span>
+        </div>
+
+        {/* Boss / primary mob HP */}
+        {primaryMob && (
+          <div className="bg-black/30 rounded p-2">
+            <div className="flex justify-between mb-1">
+              <span className={`font-bold ${primaryMob.is_named ? 'text-purple-300' : primaryMob.is_elite ? 'text-orange-400' : 'text-red-400'}`}>
+                {primaryMob.is_named ? '⚑ ' : primaryMob.is_elite ? '★ ' : ''}{primaryMob.name}
+                {aliveMobs.length > 1 && <span className="text-gray-500 ml-1">+{aliveMobs.length - 1} more</span>}
+              </span>
+              <span className="text-gray-400">{primaryMob.hp} / {primaryMob.max_hp} HP</span>
+            </div>
+            <div className="progress-container" style={{ height: '8px' }}>
+              <div className="target-hp-fill transition-all duration-300"
+                style={{ width: `${hpPct(primaryMob.hp, primaryMob.max_hp)}%`, height: '100%', borderRadius: '1px' }} />
+            </div>
+          </div>
+        )}
+
+        {roomCleared && (
+          <div className="text-center text-yellow-400 font-bold py-1 border border-yellow-800/50 bg-yellow-900/20 rounded">
+            {run.status === 'cleared' ? '★ DUNGEON CLEARED!' : isLastRoom ? '★ BOSS DEFEATED!' : '✓ ROOM CLEARED'}
+          </div>
+        )}
+
+        {/* Party rows */}
+        <div className="flex flex-col gap-1 flex-1">
+          <div className="text-gray-600 text-[10px] tracking-widest mb-1">── PARTY ──</div>
+
+          {/* Player row */}
+          <div className="flex items-center gap-2 bg-black/20 rounded px-2 py-1">
+            <span className="w-14 text-accent font-bold truncate">{player?.name || 'YOU'}</span>
+            <span className="w-14 text-gray-500 truncate">{player?.char_class}</span>
+            <div className="flex-1 progress-container" style={{ height: '6px' }}>
+              <div className={`${hpColor(hpPct(player?.hp ?? 1, player?.max_hp ?? 1))} h-full transition-all duration-300`}
+                style={{ width: `${hpPct(player?.hp ?? 1, player?.max_hp ?? 1)}%`, borderRadius: '1px' }} />
+            </div>
+            <span className="w-16 text-right text-gray-400 text-[10px]">{player?.hp}/{player?.max_hp}</span>
+          </div>
+
+          {/* AI party member rows */}
+          {(run.party || []).map((m: any) => {
+            const pct = hpPct(m.hp, m.max_hp);
+            const roleColor = m.role === 'healer' ? 'text-green-400' : m.role === 'tank' ? 'text-blue-400' : 'text-red-400';
+            return (
+              <div key={m.id} className={`flex items-center gap-2 bg-black/20 rounded px-2 py-1 ${!m.is_alive ? 'opacity-30' : ''}`}>
+                <span className="w-14 text-gray-200 font-bold truncate">{m.name}</span>
+                <span className={`w-14 truncate text-[10px] ${roleColor}`}>{m.char_class}</span>
+                <div className="flex-1 progress-container" style={{ height: '6px' }}>
+                  {m.is_alive
+                    ? <div className={`${hpColor(pct)} h-full transition-all duration-300`}
+                        style={{ width: `${pct}%`, borderRadius: '1px' }} />
+                    : <div className="bg-gray-800 h-full w-full" style={{ borderRadius: '1px' }} />
+                  }
+                </div>
+                <span className="w-28 text-right text-gray-500 text-[10px] truncate">{m.is_alive ? m.last_action : '💀 DEAD'}</span>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Rolling combat log */}
+        <div className="border-t border-white/10 pt-2">
+          <div className="text-gray-600 text-[10px] tracking-widest mb-1">── LOG ──</div>
+          {(run.combat_log || []).slice(-3).map((line: string, i: number) => (
+            <div key={i} className="text-gray-400 text-[10px] leading-5">▶ {line}</div>
+          ))}
+          {(run.combat_log || []).length === 0 && (
+            <div className="text-gray-600 text-[10px]">Entering {room?.name}...</div>
+          )}
+        </div>
+
+        {/* Action buttons */}
+        <div className="flex gap-2 pt-1 border-t border-white/10">
+          {run.status === 'active' && !roomCleared && (
+            <button
+              className={`tool-button flex-1 !text-red-400 !border-red-900/50 relative overflow-hidden ${dungeonAttacking ? 'opacity-60' : ''}`}
+              disabled={dungeonAttacking}
+              onClick={async () => {
+                if (!playerId || dungeonAttacking) return;
+                setDungeonAttacking(true);
+                try {
+                  const res = await fetch(`http://localhost:8000/dungeon/attack/${run.id}?player_id=${playerId}`, { method: 'POST' });
+                  if (!res.ok) { const e = await res.json(); addLog(e.detail || 'Dungeon error', 'error'); return; }
+                  const data = await res.json();
+                  setDungeonRun(data.run);
+                  setPlayer((prev: any) => prev ? {
+                    ...prev,
+                    hp: data.player_hp, max_hp: data.player_max_hp,
+                    xp: data.player_xp, gold: data.player_gold,
+                    level: data.player_level, inventory: data.player_inventory ?? prev.inventory,
+                  } : prev);
+                  if (data.loot?.length) {
+                    data.loot.forEach((item: any) => addLog(`🎒 ${item.name} (${item.rarity}) dropped!`, 'system'));
+                  }
+                  if (data.leveled_up) addLog(`⬆ LEVEL UP! Now level ${data.player_level}!`, 'system');
+                  if (data.wiped) { addLog('☠ Your party was wiped. Retreating...', 'error'); setDungeonRun(null); }
+                } catch (e: any) { addLog(`Dungeon Error: ${e.message}`, 'error'); }
+                finally { setDungeonAttacking(false); }
+              }}
+            >
+              {dungeonAttacking ? '...' : '⚔ ATTACK'}
+            </button>
+          )}
+
+          {run.status === 'active' && roomCleared && !isLastRoom && (
+            <button
+              className="tool-button flex-1 !text-yellow-400 !border-yellow-800/50"
+              onClick={async () => {
+                const res = await fetch(`http://localhost:8000/dungeon/advance/${run.id}?player_id=${playerId}`, { method: 'POST' });
+                if (res.ok) { const d = await res.json(); setDungeonRun(d); addLog(`→ Entering ${d.rooms?.[d.room_index]?.name}...`, 'system'); }
+              }}
+            >
+              ADVANCE →
+            </button>
+          )}
+
+          {(run.status === 'cleared' || (run.status === 'active' && roomCleared && isLastRoom)) && (
+            <button
+              className="tool-button flex-1 !text-yellow-400 !border-yellow-700/60"
+              onClick={async () => {
+                await fetch(`http://localhost:8000/dungeon/flee/${run.id}?player_id=${playerId}`, { method: 'POST' });
+                setDungeonRun(null);
+                addLog('You leave the dungeon, victorious.', 'system');
+              }}
+            >
+              ★ RETURN TO WORLD
+            </button>
+          )}
+
+          {run.status === 'active' && (
+            <button
+              className="tool-button !text-gray-500 !border-gray-800"
+              onClick={async () => {
+                await fetch(`http://localhost:8000/dungeon/flee/${run.id}?player_id=${playerId}`, { method: 'POST' });
+                setDungeonRun(null);
+                addLog('You flee the dungeon.', 'system');
+              }}
+            >
+              FLEE
+            </button>
+          )}
+        </div>
       </div>
     );
   };
@@ -2036,11 +2211,38 @@ export default function Home() {
         const isDungeon = lowerCmd.includes('dungeon');
         const isRaid    = lowerCmd.includes('raid');
         const zoneType  = isRaid ? 'Raid' : isDungeon ? 'Dungeon' : 'Zone';
+
+        // Dungeons and raids use the instanced dungeon engine, not zone travel
+        if (isDungeon || isRaid) {
+          addLog(`Assembling party for ${zoneType}...`, "system");
+          try {
+            if (!playerId) throw new Error("Character not found.");
+            const res = await fetch(
+              `http://localhost:8000/dungeon/enter/${playerId}?is_raid=${isRaid}`,
+              { method: 'POST' }
+            );
+            if (!res.ok) {
+              const err = await res.json();
+              addLog(err.detail || "Cannot enter dungeon yet.", "error");
+            } else {
+              const run = await res.json();
+              setDungeonRun(run);
+              const firstRoom = run.rooms?.[0];
+              addLog(`━━━ ENTERING: ${run.dungeon_name?.toUpperCase()} ━━━`, "system");
+              addLog(`Your party assembles: ${(run.party || []).map((m: any) => `${m.name} (${m.char_class})`).join(', ')}`, "hint");
+              addLog(`Room 1: ${firstRoom?.name} — ${firstRoom?.mobs?.length} enemies ahead.`, "hint");
+            }
+          } catch (err: any) {
+            addLog(`Dungeon Error: ${err.message}`, "error");
+          }
+          return;
+        }
+
         addLog(`Generating new ${zoneType}... Please wait.`, "system");
         try {
           if (!playerId) throw new Error("Character not found.");
           const res = await fetch(
-            `http://localhost:8000/zone/travel/${playerId}?is_dungeon=${isDungeon}&is_raid=${isRaid}`,
+            `http://localhost:8000/zone/travel/${playerId}?is_dungeon=false&is_raid=false`,
             { method: 'POST' }
           );
           if (!res.ok) {
@@ -2185,19 +2387,23 @@ export default function Home() {
       )}
 
       <div className="main-content-wrapper game-layout">
-        {/* COLUMN 1: THE CORE FEED */}
+        {/* COLUMN 1: THE CORE FEED — swaps to dungeon theater when in a run */}
         <div className="terminal-column">
-          {renderWeather()}
-          <div className="glass-panel terminal-wrapper flex-1">
-            <div className="terminal-output" ref={scrollRef}>
-              {logs.map((log, i) => (
-                <div key={i} className={`terminal-line log-${log.type}`}>
-                  {renderLogText(log.text)}
+          {!dungeonRun && renderWeather()}
+          {dungeonRun
+            ? renderDungeonTheater()
+            : (
+              <div className="glass-panel terminal-wrapper flex-1">
+                <div className="terminal-output" ref={scrollRef}>
+                  {logs.map((log, i) => (
+                    <div key={i} className={`terminal-line log-${log.type}`}>
+                      {renderLogText(log.text)}
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </div>
-
+              </div>
+            )
+          }
         </div>
 
         {/* COLUMN 2: NAVIGATION & STATUS */}
@@ -2225,6 +2431,30 @@ export default function Home() {
                 <div style={{ height: '32px', width: '100%' }} />
                 <div>{renderInventory()}</div>
               </div>
+
+              {dungeonRun && (
+                <div className="pb-12">
+                  <div className="panel-header header-nearby">PARTY</div>
+                  <div style={{ height: '32px', width: '100%' }} />
+                  <div className="space-y-2 px-1">
+                    {(dungeonRun.party || []).map((m: any) => {
+                      const pct = Math.max(0, Math.min(100, (m.hp / (m.max_hp || 1)) * 100));
+                      const roleColor = m.role === 'healer' ? 'text-green-400' : m.role === 'tank' ? 'text-blue-400' : 'text-red-400';
+                      return (
+                        <div key={m.id} className={`text-xs ${!m.is_alive ? 'opacity-30' : ''}`}>
+                          <div className="flex justify-between">
+                            <span className="text-gray-200 font-bold">{m.name}</span>
+                            <span className={`text-[10px] ${roleColor}`}>{m.role.toUpperCase()}</span>
+                          </div>
+                          <div className="progress-container mt-0.5" style={{ height: '5px' }}>
+                            <div className="hp-fill transition-all duration-300" style={{ width: `${pct}%`, height: '100%' }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               <div className="pb-12">
                 <div className="panel-header header-nearby" />
