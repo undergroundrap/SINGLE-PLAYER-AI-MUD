@@ -1430,14 +1430,15 @@ export default function Home() {
       if (lowerCmd === 'help' || lowerCmd === '?') {
         addLog("══════════ COMMANDS ══════════", "system");
         addLog("MOVEMENT  go [north/south/east/west]", "hint");
-        addLog("COMBAT    kill [mob] · flee", "hint");
-        addLog("QUESTS    quests · accept [1/all] · turn in · gather (forage quests)", "hint");
+        addLog("COMBAT    attack [mob] · flee (escape mid-fight)", "hint");
+        addLog("QUESTS    quests · accept [1/all] · turn in · gather", "hint");
         addLog("SOCIAL    talk to [npc] · who", "hint");
-        addLog("ITEMS     inventory · equip [item] · unequip [slot] · look [item/mob]", "hint");
-        addLog("POTIONS   use healing · use elixir  (or click USE in the panel)", "hint");
+        addLog("ITEMS     inventory · look · look [item/mob/npc] · equip [item] · unequip [slot]", "hint");
+        addLog("POTIONS   use healing · use elixir  (or click USE in side panel)", "hint");
         addLog("ECONOMY   shop · buy [item] · sell [item] · sell junk", "hint");
         addLog("TRAVEL    travel · travel dungeon (lv10+) · travel raid (lv20+)", "hint");
-        addLog("Any other text → AI narrative engine", "hint");
+        addLog("DUNGEON   attack · flee  (inside dungeon: advance auto-triggers)", "hint");
+        addLog("Any other input → AI narrative engine", "hint");
         addLog("══════════════════════════════", "system");
       } else if (lowerCmd.startsWith('look ') || lowerCmd === 'look') {
         const targetStr = lowerCmd.startsWith('look ') ? lowerCmd.substring(5).trim() : null;
@@ -1668,6 +1669,13 @@ export default function Home() {
             addLog(`✦ ${forageQ.collect_name || "Resources"} can be gathered here (${forageQ.current_progress}/${forageQ.target_count}). Click GATHER or type 'gather'.`, "hint");
           }
           describeLocation(nextLoc.name, nextLoc.description, zone?.name || '');
+          // Warn if there are live mobs here
+          const nowArrival = Date.now() / 1000;
+          const aliveMobsHere = (nextLoc.mobs || []).filter((m: any) => !m.respawn_at || m.respawn_at <= nowArrival);
+          if (aliveMobsHere.length > 0) {
+            const names = [...new Set(aliveMobsHere.map((m: any) => m.name))].join(', ');
+            addLog(`⚔ Danger — ${names} lurk here. Type 'attack [name]' to engage.`, "combat");
+          }
           if (nextLoc.npcs?.length > 0) {
             addLog("NPCS PRESENT:", "hint");
             nextLoc.npcs.forEach((n: any) => {

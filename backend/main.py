@@ -391,7 +391,7 @@ async def travel_to_zone(player_id: str, is_dungeon: bool = False, is_raid: bool
     # Zone travel gate — must complete at least 2 quests from the current zone first
     if not is_dungeon and not is_raid:
         current_zone_id = player.current_zone_id
-        zone_quests_done = sum(1 for qid in player.completed_quest_ids if qid.endswith(current_zone_id) or f"_{current_zone_id}" in qid)
+        zone_quests_done = sum(1 for qid in player.completed_quest_ids if qid.endswith(current_zone_id))
         if zone_quests_done < 2:
             raise HTTPException(
                 status_code=400,
@@ -403,8 +403,10 @@ async def travel_to_zone(player_id: str, is_dungeon: bool = False, is_raid: bool
     new_zone = await world_gen.generate_zone(level=zone_level, is_dungeon=is_dungeon, is_raid=is_raid)
     await vec_db.save_zone(new_zone.id, new_zone.model_dump(mode='json'))
 
+    if not new_zone.locations:
+        raise HTTPException(status_code=500, detail="Zone generation failed — no locations created.")
     player.current_zone_id = new_zone.id
-    player.current_location_id = new_zone.locations[0].id if new_zone.locations else None
+    player.current_location_id = new_zone.locations[0].id
     if new_zone.id not in player.visited_zone_ids:
         player.visited_zone_ids = player.visited_zone_ids + [new_zone.id]
 
@@ -649,6 +651,10 @@ async def gather(player_id: str):
         and not q.is_completed
     ]
     if not forage_quests:
+        # Check if a forage quest is done but not yet turned in
+        done_forage = next((q for q in player.active_quests if q.quest_type == "forage" and q.is_completed), None)
+        if done_forage:
+            return {"success": False, "message": f'"{done_forage.title}" is complete — return to the quest giver to turn it in.'}
         # Give a helpful hint pointing to the right location
         all_forage = [q for q in player.active_quests if q.quest_type == "forage" and not q.is_completed]
         if all_forage:

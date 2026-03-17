@@ -124,8 +124,8 @@ def _build_party(player: Player, is_raid: bool = False) -> list[DungeonMember]:
         pool.remove(npc)
         name, char_class, npc_role, hp_mult, dmg_mult = npc
         used_names.add(name)
-        base_hp  = int(ScalingMath.get_max_hp(player.level)  * hp_mult)
-        base_dmg = int(ScalingMath.get_damage(player.level) * dmg_mult)
+        base_hp  = max(1, int(ScalingMath.get_max_hp(player.level)  * hp_mult))
+        base_dmg = max(1, int(ScalingMath.get_damage(player.level) * dmg_mult))
         members.append(DungeonMember(
             id=f"npc_{name.lower()}_{uuid.uuid4().hex[:6]}",
             name=name,
@@ -401,8 +401,18 @@ def resolve_round(run: DungeonRun, player: Player) -> dict:
         if boss:
             tier = "raid" if run.is_raid else "dungeon"
             rolls = 3 if run.is_raid else (2 if boss.is_named else 1)
+            # Dungeon loot guaranteed Uncommon+; Raid guaranteed Rare+
+            guaranteed_table = (
+                [{"chance": 0.50, "rarity": "Rare",      "stat_mult": 2.5},
+                 {"chance": 0.25, "rarity": "Epic",       "stat_mult": 4.0},
+                 {"chance": 0.05, "rarity": "Legendary",  "stat_mult": 7.0}]
+                if run.is_raid else
+                [{"chance": 0.55, "rarity": "Uncommon",  "stat_mult": 1.5},
+                 {"chance": 0.25, "rarity": "Rare",       "stat_mult": 2.5},
+                 {"chance": 0.08, "rarity": "Epic",       "stat_mult": 4.0}]
+            )
             for _ in range(rolls):
-                item = _roll_loot(boss.level, boss.loot_table,
+                item = _roll_loot(boss.level, guaranteed_table,
                                   char_class=player.char_class, zone_tier=tier)
                 if item:
                     player.inventory.append(item)
