@@ -211,7 +211,7 @@ Every class has a unique passive ability that **fires automatically** between th
 | Shaman | ⚡ CHAIN LIGHTNING | 20% | 1.8× bonus damage |
 | Mage | ✦ ARCANE SURGE | 25% | 1.8× bonus damage |
 | Warlock | ✧ SOUL DRAIN | 20% | 1.5× damage + lifesteal (half as healing) |
-| Druid | ✦ BARKSKIN | 20% | Skip mob counter-attack |
+| Druid | ✦ REJUVENATION | 25% | Heal 15% max HP |
 
 Proc fires after the player's hit resolves. If a proc kills the mob, the mob's counter-attack is skipped. If a dodge/barkskin proc fires, the counter-attack is also skipped regardless.
 
@@ -441,6 +441,7 @@ All endpoints are in `backend/main.py`. Backend runs on `http://localhost:8000`.
 | `GET` | `/vendor/{player_id}` | Get vendor stock + player gold. Param: `npc_name` |
 | `POST` | `/vendor/buy/{player_id}` | Purchase item. Params: `npc_name`, `item_id` |
 | `POST` | `/vendor/sell/{player_id}` | Sell inventory item. Price = `item.level × stat_total × 2`. Param: `item_id` |
+| `POST` | `/vendor/sell_junk/{player_id}` | Sell all Common-rarity non-consumable items at once. Returns `gold_gained`, `sold_count`, `player_gold`. |
 
 ### Narrative
 | Method | Path | Description |
