@@ -55,8 +55,10 @@ def _apply_class_proc(player: "Player", target_mob: "Mob", messages: list) -> bo
     if not proc or random.random() > proc["chance"]:
         return False
     ptype, mult, label = proc["type"], proc["mult"], proc["label"]
+    # Use effective max hit so proc damage scales with weapon upgrades, same as normal attacks
+    effective_max = combat_engine.get_effective_max_hit(player)
     if ptype == "damage":
-        bonus = max(1, int(player.damage * mult))
+        bonus = max(1, int(effective_max * mult))
         target_mob.hp = max(0, target_mob.hp - bonus)
         messages.append(f"  ★ {label}! +{bonus} bonus damage!")
     elif ptype == "heal":
@@ -64,7 +66,7 @@ def _apply_class_proc(player: "Player", target_mob: "Mob", messages: list) -> bo
         player.hp = min(player.max_hp, player.hp + heal)
         messages.append(f"  ★ {label}! Restored {heal} HP!")
     elif ptype == "drain":
-        bonus = max(1, int(player.damage * mult))
+        bonus = max(1, int(effective_max * mult))
         heal  = bonus // 2
         target_mob.hp = max(0, target_mob.hp - bonus)
         player.hp = min(player.max_hp, player.hp + heal)
