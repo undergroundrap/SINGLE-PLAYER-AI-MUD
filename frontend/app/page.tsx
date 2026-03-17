@@ -99,8 +99,7 @@ export default function Home() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const seenEntities = useRef<Set<string>>(new Set());
-  const isInCombatRef = useRef(false); // kept in sync with autoAttackTarget for use inside intervals
-  const chatQueueRef = useRef<{name: string; text: string}[]>([]); // idle chat queued during combat
+  const isInCombatRef = useRef(false); // kept in sync with autoAttackTarget — reserved for future use
   const chatMsgCountRef = useRef(0);
   const idleChatRef = useRef<{ zone: any; player: any; globalChat: any[] }>({ zone: null, player: null, globalChat: [] });
   const lastRegenSyncRef = useRef<number>(0); // timestamp of last HP sync to backend
@@ -340,18 +339,9 @@ export default function Home() {
     idleChatRef.current = { zone, player, globalChat };
   }, [zone, player, globalChat]);
 
-  // Keep combat ref in sync — lets timers queue during active combat without stale closures.
-  // When combat ends, flush any queued idle chat messages.
+  // Keep combat ref in sync with autoAttackTarget
   useEffect(() => {
     isInCombatRef.current = autoAttackTarget !== null;
-    if (autoAttackTarget === null && chatQueueRef.current.length > 0) {
-      const queued = chatQueueRef.current.splice(0);
-      setGlobalChat(prev => {
-        let result = [...prev];
-        for (const entry of queued) result = [...result.slice(-19), entry];
-        return result;
-      });
-    }
   }, [autoAttackTarget]);
 
   // Sim players occasionally initiate chat unprompted (~every 30-60s, 60% fire chance)
@@ -413,11 +403,7 @@ export default function Home() {
             return [...prev.slice(-19), entry];
           });
         };
-        if (isInCombatRef.current) {
-          chatQueueRef.current.push({ name: data.name, text: data.text });
-        } else {
-          addIdle({ name: data.name, text: data.text });
-        }
+        addIdle({ name: data.name, text: data.text });
       } catch { /* silent */ }
     }, 30000 + Math.random() * 30000);
     return () => clearInterval(interval);
