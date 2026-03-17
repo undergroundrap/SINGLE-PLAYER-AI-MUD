@@ -32,7 +32,18 @@ const CLASS_FLAVOR: Record<string, string> = {
   "Druid": "A keeper of the wild who can shapeshift into primal forms."
 };
 
-// Permanent replacements made in backend. This is now a safety pass.
+// Returns the new progress value if this quest is tracked by the kill, otherwise null.
+const GATHER_SUFFIX_RE = / (trophy|tusk|fang|pelt|wing|tail|hide|scale|stinger|ear|bone|finger|claw|horn|core|essence|shard|crystal|badge)$/i;
+function questNewProgress(q: any, targetName: string, targetIsNamed: boolean): number | null {
+  const mob = q.target_id.toLowerCase().includes(targetName.toLowerCase());
+  const gatherBase = q.quest_type === 'gather'
+    ? q.target_id.toLowerCase().replace(GATHER_SUFFIX_RE, '').trim()
+    : null;
+  const tracked = (q.quest_type === 'kill' && mob)
+               || (q.quest_type === 'hunt' && targetIsNamed)
+               || (q.quest_type === 'gather' && !!gatherBase && targetName.toLowerCase().includes(gatherBase));
+  return tracked ? Math.min(q.target_count, q.current_progress + 1) : null;
+}
 
 export default function Home() {
   const [player, setPlayer] = useState<any>(null);
@@ -1529,21 +1540,12 @@ export default function Home() {
               const questLogs: Array<{ msg: string; type: 'system' | 'hint' }> = [];
               if (data.target_dead) {
                 (player?.active_quests || []).forEach((q: any) => {
-                  const mobMatches = q.target_id.toLowerCase().includes(targetStr.toLowerCase());
-                  const gatherBase = q.quest_type === 'gather'
-                    ? q.target_id.toLowerCase().replace(/ (trophy|tusk|fang|pelt|wing|tail|hide|scale|stinger|ear|bone|finger|claw|horn|core|essence|shard|crystal|badge)$/i, '').trim()
-                    : null;
-                  const gatherMatches = gatherBase && targetStr.toLowerCase().includes(gatherBase);
-                  const tracked = (q.quest_type === 'kill' && mobMatches)
-                                || (q.quest_type === 'hunt' && data.target_is_named)
-                                || (q.quest_type === 'gather' && gatherMatches);
-                  if (tracked) {
-                    const newProg = Math.min(q.target_count, q.current_progress + 1);
-                    if (newProg >= q.target_count && !q.is_completed) {
-                      questLogs.push({ msg: `★ QUEST COMPLETE: "${q.title}"! Return to turn in.`, type: 'system' });
-                    } else {
-                      questLogs.push({ msg: `${q.title}: ${newProg}/${q.target_count}`, type: 'hint' });
-                    }
+                  const newProg = questNewProgress(q, targetStr, data.target_is_named);
+                  if (newProg === null) return;
+                  if (newProg >= q.target_count && !q.is_completed) {
+                    questLogs.push({ msg: `★ QUEST COMPLETE: "${q.title}"! Return to turn in.`, type: 'system' });
+                  } else {
+                    questLogs.push({ msg: `${q.title}: ${newProg}/${q.target_count}`, type: 'hint' });
                   }
                 });
                 questLogs.forEach(l => addLog(l.msg, l.type));
@@ -1557,19 +1559,9 @@ export default function Home() {
 
                 if (data.target_dead) {
                   updatedQuests = updatedQuests.map((q: any) => {
-                    const mobMatches = q.target_id.toLowerCase().includes(targetStr.toLowerCase());
-                    const gatherBase = q.quest_type === 'gather'
-                      ? q.target_id.toLowerCase().replace(/ (trophy|tusk|fang|pelt|wing|tail|hide|scale|stinger|ear|bone|finger|claw|horn|core|essence|shard|crystal|badge)$/i, '').trim()
-                      : null;
-                    const gatherMatches = gatherBase && targetStr.toLowerCase().includes(gatherBase);
-                    const tracked = (q.quest_type === 'kill' && mobMatches)
-                                 || (q.quest_type === 'hunt' && data.target_is_named)
-                                 || (q.quest_type === 'gather' && gatherMatches);
-                    if (tracked) {
-                      const newProg = Math.min(q.target_count, q.current_progress + 1);
-                      return { ...q, current_progress: newProg, is_completed: newProg >= q.target_count };
-                    }
-                    return q;
+                    const newProg = questNewProgress(q, targetStr, data.target_is_named);
+                    if (newProg === null) return q;
+                    return { ...q, current_progress: newProg, is_completed: newProg >= q.target_count };
                   });
 
                   if (data.loot_item) {
@@ -1636,17 +1628,9 @@ export default function Home() {
 
                 // Sync quest progress to backend
                 (player?.active_quests || []).forEach(async (q: any) => {
-                  const mobMatches = q.target_id.toLowerCase().includes(targetStr.toLowerCase());
-                  const gatherBase = q.quest_type === 'gather'
-                    ? q.target_id.toLowerCase().replace(/ (trophy|tusk|fang|pelt|wing|tail|hide|scale|stinger|ear|bone|finger|claw|horn|core|essence|shard|crystal|badge)$/i, '').trim()
-                    : null;
-                  const tracked = q.quest_type === 'kill' && mobMatches
-                                || q.quest_type === 'hunt' && data.target_is_named
-                                || q.quest_type === 'gather' && gatherBase && targetStr.toLowerCase().includes(gatherBase);
-                  if (tracked) {
-                    const newProg = Math.min(q.target_count, q.current_progress + 1);
-                    try { await fetch(`http://localhost:8000/quests/progress/${playerId}?quest_id=${q.id}&progress=${newProg}`, { method: 'POST' }); } catch {}
-                  }
+                  const newProg = questNewProgress(q, targetStr, data.target_is_named);
+                  if (newProg === null) return;
+                  try { await fetch(`http://localhost:8000/quests/progress/${playerId}?quest_id=${q.id}&progress=${newProg}`, { method: 'POST' }); } catch {}
                 });
 
               } else {
@@ -2621,12 +2605,14 @@ export default function Home() {
             const exits = loc?.exits || {};
             const nowTs = Date.now() / 1000;
 
-            // Unique alive mob names for attack buttons
-            const aliveMobNames = [...new Set(
-              (loc?.mobs || [])
-                .filter((m: any) => !m.respawn_at || m.respawn_at <= nowTs)
-                .map((m: any) => m.name)
-            )] as string[];
+            // Unique alive mob names sorted: regular → elite → named
+            const aliveMobs = (loc?.mobs || []).filter((m: any) => !m.respawn_at || m.respawn_at <= nowTs);
+            const mobRank = (name: string) => {
+              const ms = aliveMobs.filter((m: any) => m.name === name);
+              return ms.some((m: any) => m.is_named) ? 2 : ms.some((m: any) => m.is_elite) ? 1 : 0;
+            };
+            const aliveMobNames = ([...new Set(aliveMobs.map((m: any) => m.name))] as string[])
+              .sort((a, b) => mobRank(a) - mobRank(b));
 
             const completedQuests = (player?.active_quests || []).filter((q: any) => q.is_completed);
             const hasQuestGiver = loc?.npcs?.some((n: any) => n.role === 'quest_giver');
