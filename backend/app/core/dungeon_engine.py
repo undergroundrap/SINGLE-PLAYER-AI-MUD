@@ -181,10 +181,10 @@ def generate_run(player: Player, is_raid: bool = False) -> DungeonRun:
 
 # ── Round resolution ──────────────────────────────────────────────────────────
 
-def _member_as_mob(m: DungeonMember) -> Mob:
+def _member_as_mob(m: DungeonMember, level: int = 1) -> Mob:
     """Wrap a DungeonMember in a Mob-like object for combat_engine reuse."""
     return Mob(
-        id=m.id, name=m.name, level=1,
+        id=m.id, name=m.name, level=level,
         hp=m.hp, max_hp=m.max_hp, damage=m.damage,
         description="",
     )
@@ -265,7 +265,7 @@ def resolve_round(run: DungeonRun, player: Player) -> dict:
                         round_log.append(f"  ✦ {member.name} heals {target_m.name} for {heal}!")
                 continue
             # No one needs healing — attack instead
-            atk, dead = combat_engine.resolve_tick(_member_as_mob(member), target)
+            atk, dead = combat_engine.resolve_tick(_member_as_mob(member, player.level), target)
             # Sync damage back (resolve_tick modified target directly via hp ref)
             member.last_action = atk[0] if atk else ""
             round_log.extend(atk)
@@ -277,13 +277,13 @@ def resolve_round(run: DungeonRun, player: Player) -> dict:
                 member.last_action = "⚑ TAUNT"
                 round_log.append(f"  ⚑ {member.name} taunts — mob damage -20% this round!")
             else:
-                atk, dead = combat_engine.resolve_tick(_member_as_mob(member), target)
+                atk, dead = combat_engine.resolve_tick(_member_as_mob(member, player.level), target)
                 member.last_action = atk[0] if atk else ""
                 round_log.extend(atk)
                 _roll_proc(member, target, round_log)
 
         else:  # dps
-            atk, dead = combat_engine.resolve_tick(_member_as_mob(member), target)
+            atk, dead = combat_engine.resolve_tick(_member_as_mob(member, player.level), target)
             member.last_action = atk[0] if atk else ""
             round_log.extend(atk)
             _roll_proc(member, target, round_log)
@@ -329,8 +329,11 @@ def resolve_round(run: DungeonRun, player: Player) -> dict:
             mob.damage = orig_damage  # restore after this tick
 
     # ── 4. Handle newly dead mobs ────────────────────────────────────────────
+    # Only give XP/gold for mobs that were alive at the start of this round
+    # and died during it — prevents double-counting on subsequent rounds.
+    alive_mob_ids = {m.id for m in alive_mobs}
     for mob in room.mobs:
-        if mob.hp <= 0:
+        if mob.id in alive_mob_ids and mob.hp <= 0:
             xp_base  = ScalingMath.get_xp_required(mob.level) // 8
             xp_mult  = 4 if mob.is_named else (2 if mob.is_elite else 1)
             xp_gained   += xp_base * xp_mult
