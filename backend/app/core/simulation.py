@@ -14,8 +14,8 @@ class SimulationEngine:
         self.running = False
 
     def mark_player_zone(self, zone_id: str):
-        """Call this whenever a real player acts in a zone to mark it active for ambiance."""
-        self.player_zones.add(zone_id)
+        """Track only the current zone — replace old entry so stale zones stop generating ambiance."""
+        self.player_zones = {zone_id}
 
     async def start(self):
         if self.running: return
