@@ -206,13 +206,14 @@ def _roll_loot(mob_level: int, loot_table: list, char_class: str = "", zone_tier
 def _apply_levelups(player: Player, messages: list) -> bool:
     """Loop level-ups until XP is below threshold. Returns True if leveled."""
     leveled = False
+    hp_mult, dmg_mult = CLASS_STATS.get(player.char_class, (1.0, 1.0))
     while player.xp >= player.next_level_xp:
         player.xp -= player.next_level_xp
         player.level += 1
         player.next_level_xp = ScalingMath.get_xp_required(player.level)
-        player.max_hp = ScalingMath.get_max_hp(player.level)
+        player.max_hp = int(ScalingMath.get_max_hp(player.level) * hp_mult)
         player.hp = player.max_hp
-        player.damage = ScalingMath.get_damage(player.level)
+        player.damage = int(ScalingMath.get_damage(player.level) * dmg_mult)
         leveled = True
         messages.append(f"⬆ LEVEL UP! You are now level {player.level}!")
     return leveled
