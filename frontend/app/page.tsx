@@ -100,6 +100,7 @@ export default function Home() {
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const seenEntities = useRef<Set<string>>(new Set());
   const isInCombatRef = useRef(false); // kept in sync with autoAttackTarget for use inside intervals
+  const chatQueueRef = useRef<{name: string; text: string}[]>([]); // idle chat queued during combat
   const chatMsgCountRef = useRef(0);
   const idleChatRef = useRef<{ zone: any; player: any; globalChat: any[] }>({ zone: null, player: null, globalChat: [] });
   const lastRegenSyncRef = useRef<number>(0); // timestamp of last HP sync to backend
@@ -339,16 +340,24 @@ export default function Home() {
     idleChatRef.current = { zone, player, globalChat };
   }, [zone, player, globalChat]);
 
-  // Keep combat ref in sync — lets timers skip during active combat without stale closures
+  // Keep combat ref in sync — lets timers queue during active combat without stale closures.
+  // When combat ends, flush any queued idle chat messages.
   useEffect(() => {
     isInCombatRef.current = autoAttackTarget !== null;
+    if (autoAttackTarget === null && chatQueueRef.current.length > 0) {
+      const queued = chatQueueRef.current.splice(0);
+      setGlobalChat(prev => {
+        let result = [...prev];
+        for (const entry of queued) result = [...result.slice(-19), entry];
+        return result;
+      });
+    }
   }, [autoAttackTarget]);
 
   // Sim players occasionally initiate chat unprompted (~every 30-60s, 60% fire chance)
   useEffect(() => {
     if (step !== 'game') return;
     const interval = setInterval(async () => {
-      if (isInCombatRef.current) return; // combat takes priority — no idle chatter during a fight
       if (Math.random() > 0.6) return;
       const { zone: z, player: p, globalChat: chat } = idleChatRef.current;
       const allSimNames = (z?.simulated_players || []).map((sp: any) => sp.name).filter(Boolean);
@@ -404,7 +413,11 @@ export default function Home() {
             return [...prev.slice(-19), entry];
           });
         };
-        addIdle({ name: data.name, text: data.text });
+        if (isInCombatRef.current) {
+          chatQueueRef.current.push({ name: data.name, text: data.text });
+        } else {
+          addIdle({ name: data.name, text: data.text });
+        }
       } catch { /* silent */ }
     }, 30000 + Math.random() * 30000);
     return () => clearInterval(interval);
@@ -1866,7 +1879,7 @@ export default function Home() {
                 const restedTag = data.rested_bonus > 0 ? ` 💤(+${data.rested_bonus} rested)` : '';
                 const killLine = `${nameplate ? nameplate + ' ' : ''}${data.target_name} slain. +${data.xp_gained} XP${restedTag}${data.gold_gained ? ` +${data.gold_gained}g` : ''}`;
                 addLog(killLine, "system");
-
+                describeEntity(data.target_name, { isElite: data.target_is_elite, isNamed: data.target_is_named, isDeath: true });
 
                 // Stop auto-attack & clear target
                 setAutoAttackTarget(null);
