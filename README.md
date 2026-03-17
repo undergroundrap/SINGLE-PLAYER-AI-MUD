@@ -187,6 +187,15 @@ The dungeon and raid portal buttons are **always visible in the sidebar from lev
 
 **Out-of-combat HP regen:** 2% of max HP per second kicks in after 6 seconds without taking damage. The frontend regen timer syncs the new HP to the backend (`POST /action/rest/{player_id}`) every ~10 seconds — reconnecting or refreshing restores the regened HP rather than snapping back to the last combat value.
 
+**Consumables — closing the gold loop:** Every vendor stocks two potions that scale in price with zone level, giving gold a permanent purpose:
+
+| Item | Effect | Cooldown | Price |
+|---|---|---|---|
+| Healing Potion | Restores 40% max HP instantly | 60 s | ~8 × level gold |
+| Elixir of Insight | Next 5 kills grant +75% XP | 5 min | ~22 × level gold |
+
+Potions appear in a dedicated **POTIONS panel** in the sidebar with USE buttons, cooldown countdowns, and active buff charge tracking. They can also be used via `use healing` / `use elixir` in the command line. **Auto-use:** the frontend automatically drinks a Healing Potion when HP drops to ≤25% of max, if one is available and off cooldown — keeping fragile classes like Mage and Priest alive without interrupting combat flow.
+
 ### Class Passive Procs
 `main.py → _apply_class_proc(player, target_mob, messages)`
 
@@ -383,7 +392,7 @@ Turn-in happens at any hub quest giver NPC via `POST /quests/complete/{player_id
 | `Location` | `id`, `name`, `description`, `npcs: List[NPC]`, `mobs: List[Mob]`, `exits: Dict[str, str]` | Exits map direction → location_id |
 | `Mob` | `id`, `name`, `level`, `hp/max_hp`, `damage`, `loot_table`, `respawn_at` (Unix ts or None), `is_elite`, `is_named` | `respawn_at = None` means alive |
 | `NPC` | `id`, `name`, `role` (`quest_giver/vendor/trainer`), `dialogue`, `quests_offered`, `vendor_items` | Vendors have `vendor_items: List[Dict]` with `price` key |
-| `Item` | `id`, `name`, `description`, `level`, `rarity`, `stats: Dict[str, int]`, `slot` | Stats: `armor` or `damage`. Slot matches equipment key |
+| `Item` | `id`, `name`, `description`, `level`, `rarity`, `stats: Dict[str, int]`, `slot` | Equipment stats: `armor` or `damage`. Consumables use `slot = "consumable"` with effect encoded in stats: `{"heal_pct": 40}` or `{"xp_bonus_pct": 75, "xp_charges": 5}` |
 | `Quest` | `id`, `title`, `objective`, `quest_type` (`kill/gather/hunt/explore`), `target_id`, `collect_name` (gather quests), `target_count`, `current_progress`, `xp_reward`, `is_completed` | |
 | `SimulatedPlayer` | `id`, `name`, `race`, `char_class`, `current_location_id`, `status` | Background actors — not real players. `current_location_id` resolves to a location name in the `/who` output. |
 
@@ -416,6 +425,7 @@ All endpoints are in `backend/main.py`. Backend runs on `http://localhost:8000`.
 | `POST` | `/action/equip/{player_id}` | Equip item from inventory. Param: `item_id` |
 | `POST` | `/action/unequip/{player_id}` | Move equipped item back to bag. Param: `slot` (`head`, `chest`, `hands`, `legs`, `feet`, `main_hand`, `off_hand`) |
 | `POST` | `/action/talk/{player_id}` | Talk to NPC. Param: `npc_name`. Returns `dialogue`, `offered_quests`, vendor fields |
+| `POST` | `/action/use/{player_id}` | Use a consumable from inventory. Param: `item_id`. Enforces per-type cooldowns (`heal` 60 s, `xp` 5 min). Returns `player_hp`, `active_xp_buff`, `heal_cd`, `xp_cd`. |
 | `POST` | `/action/rest/{player_id}` | Persist out-of-combat HP regen. Param: `hp` (clamped to `[1, max_hp]` server-side). Called by frontend timer every ~10 s while regenerating. |
 
 ### Quests
