@@ -904,7 +904,11 @@ export default function Home() {
                     data.loot.forEach((item: any) => addLog(`🎒 ${item.name} (${item.rarity}) dropped!`, 'system'));
                   }
                   if (data.leveled_up) addLog(`⬆ LEVEL UP! Now level ${data.player_level}!`, 'system');
-                  if (data.wiped) { addLog('☠ Your party was wiped. Retreating...', 'error'); setDungeonRun(null); }
+                  if (data.wiped) {
+                    addLog('☠ Your party was wiped. Retreating...', 'error');
+                    await fetch(`http://localhost:8000/dungeon/flee/${dungeonRun.id}?player_id=${playerId}`, { method: 'POST' }).catch(() => {});
+                    setDungeonRun(null);
+                  }
                 } catch (e: any) { addLog(`Dungeon Error: ${e.message}`, 'error'); }
                 finally { setDungeonAttacking(false); }
               }}
@@ -1886,7 +1890,7 @@ export default function Home() {
                       ...l,
                       mobs: l.mobs.map((m: any) =>
                         m.name.toLowerCase().includes(targetStr.toLowerCase()) && (!m.respawn_at || m.respawn_at <= nowTs)
-                          ? { ...m, hp: 0, respawn_at: nowTs + 34 }
+                          ? { ...m, hp: 0, respawn_at: data.mob_respawn_at ?? nowTs + 34 }
                           : m
                       )
                     }
@@ -1925,6 +1929,17 @@ export default function Home() {
                 addLog("☠ You have been defeated! You wake at the settlement.", "error");
                 setAutoAttackTarget(null);
                 setTarget(null);
+                // Auto-describe the respawn location
+                const respawnLoc = zone?.locations?.find((l: any) => l.id === data.respawn_location_id);
+                if (respawnLoc) {
+                  setTimeout(() => {
+                    addLog("─────────────────────────────────────", "system");
+                    addLog(`📍 ${respawnLoc.name}`, "system");
+                    addLog(respawnLoc.description, "hint");
+                    const npcsHere = (respawnLoc.npcs || []).map((n: any) => n.name).join(', ');
+                    if (npcsHere) addLog(`Present: ${npcsHere}`, "hint");
+                  }, 400);
+                }
               }
 
               // Sync potion cooldowns + XP buff from authoritative backend values

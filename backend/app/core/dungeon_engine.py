@@ -291,13 +291,19 @@ def resolve_round(run: DungeonRun, player: Player) -> dict:
 
     # ── 3. Surviving mobs counter-attack ────────────────────────────────────
     surviving_mobs = [m for m in room.mobs if m.hp > 0]
-    all_living = [("player", player)] + [("member", m) for m in living_members]
-    if surviving_mobs and all_living:
+    if surviving_mobs:
         for mob in surviving_mobs:
-            target_type, target_obj = random.choice(all_living)
-            # Taunt redirects to the tank if present
+            # Recalculate living targets each mob turn so deaths mid-round are respected
+            current_living = (
+                ([("player", player)] if player.hp > 0 else []) +
+                [("member", m) for m in run.party if m.is_alive]
+            )
+            if not current_living:
+                break
+            target_type, target_obj = random.choice(current_living)
+            # Taunt redirects to the tank if still alive
             if taunt_active:
-                tank = next((m for m in living_members if m.role == "tank"), None)
+                tank = next((m for m in run.party if m.role == "tank" and m.is_alive), None)
                 if tank:
                     target_type, target_obj = "member", tank
 
@@ -362,6 +368,13 @@ def resolve_round(run: DungeonRun, player: Player) -> dict:
     # ── 8. Apply XP and gold ─────────────────────────────────────────────────
     player.xp   += xp_gained
     player.gold += gold_gained
+    if player_dead:
+        xp_penalty = int(player.xp * 0.15)
+        player.xp  = max(0, player.xp - xp_penalty)
+        player.deaths = (player.deaths or 0) + 1
+        player.hp = max(1, player.max_hp // 2)
+        if xp_penalty:
+            round_log.append(f"  ☠ XP penalty: -{xp_penalty} XP")
 
     # Level-up loop
     leveled_up = False

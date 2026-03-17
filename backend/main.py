@@ -606,6 +606,7 @@ async def attack(player_id: str, mob_name: str):
         "player_dead":         player_dead,
         "respawn_location_id": respawn_location_id,
         "mob_hp":              target_mob.hp,
+        "mob_respawn_at":      target_mob.respawn_at,
         "target_name":         target_mob.name,
         "target_max_hp":       target_mob.max_hp,
         "target_level":        target_mob.level,
@@ -1544,15 +1545,15 @@ async def dungeon_attack(run_id: str, player_id: str):
         else:
             player.dungeons_cleared = (player.dungeons_cleared or 0) + 1
 
-    # Persist updated player
-    await vec_db.save_player(player_id, player.model_dump(mode='json'))
-    # Update in-memory run from result; evict once terminal
+    # Evict terminal runs and clear player pointer BEFORE saving so DB is consistent
     updated_run = DungeonRun(**result["run"])
     if updated_run.status in ("cleared", "wiped"):
         _dungeon_runs.pop(run_id, None)
         player.active_dungeon_run_id = None
     else:
         _dungeon_runs[run_id] = updated_run
+
+    await vec_db.save_player(player_id, player.model_dump(mode='json'))
 
     return {
         **result,
@@ -1575,6 +1576,7 @@ async def dungeon_advance(run_id: str, player_id: str):
     if run.room_index >= len(run.rooms) - 1:
         raise HTTPException(status_code=400, detail="Already in the final room.")
     run.room_index += 1
+    _dungeon_runs[run_id] = run  # persist advance so disconnect doesn't regress room
     return run.model_dump(mode='json')
 
 
