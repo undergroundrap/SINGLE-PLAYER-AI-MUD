@@ -103,6 +103,8 @@ class Player(CharacterBase):
     rested_xp: int = 0               # Bonus XP pool accumulated while logged out
     last_logout_time: float = 0.0    # Unix timestamp recorded on clean logout
     active_dungeon_run_id: Optional[str] = None
+    dungeons_cleared: int = 0
+    raids_cleared: int = 0
 
 class DungeonMember(BaseModel):
     id: str
@@ -126,11 +128,13 @@ class DungeonRun(BaseModel):
     player_id: str
     dungeon_name: str
     dungeon_level: int
-    room_index: int = 0         # current room (0, 1, 2)
+    is_raid: bool = False
+    room_index: int = 0         # current room (0–4 for raids, 0–2 for dungeons)
     rooms: List[DungeonRoom] = []
     party: List[DungeonMember] = []
     combat_log: List[str] = []  # rolling 5 lines
     status: str = "active"      # active | cleared | wiped
+    boss_enraged: bool = False   # raid phase 2: triggers at 30% boss HP
     loot: List[dict] = []
 
 class Zone(BaseModel):

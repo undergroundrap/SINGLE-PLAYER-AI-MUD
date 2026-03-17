@@ -7,7 +7,7 @@ from app.core.scaling_math import ScalingMath, RARITY
 from app.core.vector_db import vec_db
 from app.core.combat_engine import combat_engine
 from app.core.simulation import sim_engine
-from app.core.dungeon_engine import generate_run, resolve_round
+from app.core.dungeon_engine import generate_run, resolve_round, calculate_gear_score, RAID_GEAR_MIN
 import uuid
 import asyncio
 import random
@@ -280,7 +280,8 @@ async def load_player(player_id: str):
     if not z_data:
         raise HTTPException(status_code=404, detail="Zone not found — data may be corrupt")
 
-    return {"player_id": player_id, "player": player, "zone": z_data}
+    return {"player_id": player_id, "player": player, "zone": z_data,
+            "gear_score": calculate_gear_score(player)}
 
 
 @app.delete("/player/{player_id}")
@@ -494,7 +495,9 @@ async def travel_to_zone(player_id: str, is_dungeon: bool = False, is_raid: bool
                 detail=f"Complete at least 2 quests before moving on. ({zone_quests_done}/2 done)"
             )
 
-    new_zone = await world_gen.generate_zone(level=player.level, is_dungeon=is_dungeon, is_raid=is_raid)
+    # Each completed raid pushes open-world zones 3 levels harder — infinite tier progression
+    zone_level = player.level + (player.raids_cleared * 3)
+    new_zone = await world_gen.generate_zone(level=zone_level, is_dungeon=is_dungeon, is_raid=is_raid)
     await vec_db.save_zone(new_zone.id, new_zone.model_dump(mode='json'))
 
     player.current_zone_id = new_zone.id
@@ -1489,6 +1492,11 @@ async def dungeon_enter(player_id: str, is_raid: bool = False):
     if player.level < min_level:
         raise HTTPException(status_code=400,
             detail=f"You must be level {min_level}+ to enter {'a raid' if is_raid else 'a dungeon'}.")
+    if is_raid:
+        gs = calculate_gear_score(player)
+        if gs < RAID_GEAR_MIN:
+            raise HTTPException(status_code=400,
+                detail=f"Gear score too low for a raid ({gs}/{RAID_GEAR_MIN}). Farm dungeons first.")
 
     run = generate_run(player, is_raid=is_raid)
     _dungeon_runs[run.id] = run
@@ -1509,6 +1517,13 @@ async def dungeon_attack(run_id: str, player_id: str):
     player = Player(**p_data)
 
     result = resolve_round(run, player)
+
+    # Track clears on the player record
+    if result.get("run_cleared"):
+        if run.is_raid:
+            player.raids_cleared = (player.raids_cleared or 0) + 1
+        else:
+            player.dungeons_cleared = (player.dungeons_cleared or 0) + 1
 
     # Persist updated player
     await vec_db.save_player(player_id, player.model_dump(mode='json'))

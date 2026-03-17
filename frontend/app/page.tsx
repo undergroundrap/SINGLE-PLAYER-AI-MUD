@@ -85,6 +85,7 @@ export default function Home() {
   // Dungeon
   const [dungeonRun, setDungeonRun] = useState<any>(null);
   const [dungeonAttacking, setDungeonAttacking] = useState<boolean>(false);
+  const [gearScore, setGearScore] = useState<number>(0);
   // null → idle | 'choose' → pick what to delete | 'single' → confirm this char | 'all' → confirm wipe all
   const [resetConfirm, setResetConfirm] = useState<null | 'choose' | 'single' | 'all'>(null);
   const autoAttackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -775,9 +776,22 @@ export default function Home() {
           </div>
         )}
 
+        {run.boss_enraged && !roomCleared && (
+          <div className="text-center text-red-400 font-bold py-1 border border-red-800/50 bg-red-900/20 rounded animate-pulse">
+            ⚡ ENRAGED — BOSS DAMAGE +40%
+          </div>
+        )}
         {roomCleared && (
-          <div className="text-center text-yellow-400 font-bold py-1 border border-yellow-800/50 bg-yellow-900/20 rounded">
-            {run.status === 'cleared' ? '★ DUNGEON CLEARED!' : isLastRoom ? '★ BOSS DEFEATED!' : '✓ ROOM CLEARED'}
+          <div className={`text-center font-bold py-1 border rounded ${
+            run.status === 'cleared' && run.is_raid
+              ? 'text-purple-300 border-purple-700/50 bg-purple-900/20'
+              : 'text-yellow-400 border-yellow-800/50 bg-yellow-900/20'
+          }`}>
+            {run.status === 'cleared' && run.is_raid
+              ? '★ RAID CLEARED — NEW TIER UNLOCKED'
+              : run.status === 'cleared'
+              ? '★ DUNGEON CLEARED!'
+              : '✓ ROOM CLEARED — ADVANCE WHEN READY'}
           </div>
         )}
 
@@ -1238,6 +1252,7 @@ export default function Home() {
             setPlayer(data.player);
             setPlayerId(data.player_id);
             setZone(data.zone);
+            setGearScore(data.gear_score ?? 0);
             setBiography(`Born and raised in the echoes of the world, ${data.player.name} has chosen the path of the ${data.player.char_class}. Identified as ${data.player.pronouns}, they seek glory in the Great Chronicles.`);
             if (data.player.current_location_id) {
               setExploredLocations(new Set([data.player.current_location_id]));
@@ -2214,7 +2229,7 @@ export default function Home() {
 
         // Dungeons and raids use the instanced dungeon engine, not zone travel
         if (isDungeon || isRaid) {
-          addLog(`Assembling party for ${zoneType}...`, "system");
+          addLog(`Assembling ${isRaid ? '10-player raid' : '5-player dungeon'} party...`, "system");
           try {
             if (!playerId) throw new Error("Character not found.");
             const res = await fetch(
@@ -2360,6 +2375,21 @@ export default function Home() {
                   <span className="stat-label">KILLS</span>
                   <span className="stat-value">{player?.kills || 0}</span>
                 </div>
+                <div className="stat-header mt-1">
+                  <span className="stat-label">
+                    GS
+                    <span className="text-[9px] opacity-40 ml-1">{gearScore < 100 ? `(${gearScore}/100 raid)` : '✓ RAID READY'}</span>
+                  </span>
+                  <span className={`stat-value text-[11px] ${gearScore >= 100 ? 'text-purple-400' : 'text-gray-400'}`}>
+                    {gearScore}
+                  </span>
+                </div>
+                {(player?.raids_cleared ?? 0) > 0 && (
+                  <div className="stat-header mt-1">
+                    <span className="stat-label text-[9px]">RAIDS</span>
+                    <span className="stat-value text-purple-400 text-[11px]">★ {player.raids_cleared}</span>
+                  </div>
+                )}
               </div>
 
               <div className="stat-item">
