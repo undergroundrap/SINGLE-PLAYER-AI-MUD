@@ -1,12 +1,13 @@
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
-from app.models.schemas import Player, Zone, Mob, Item, Location, Quest
+from app.models.schemas import Player, Zone, Mob, Item, Location, Quest, DungeonRun
 from app.core.world_generator import world_gen
 from app.core.scaling_math import ScalingMath, RARITY
 from app.core.vector_db import vec_db
 from app.core.combat_engine import combat_engine
 from app.core.simulation import sim_engine
+from app.core.dungeon_engine import generate_run, resolve_round
 import uuid
 import asyncio
 import random
@@ -24,6 +25,7 @@ POTION_XP_COOLDOWN   = 300.0  # elixir of insight cooldown (5 min)
 _attack_times:     dict[str, float] = {}  # player_id -> last attack timestamp
 _potion_cooldowns: dict[str, float] = {}  # "{player_id}:heal" | "{player_id}:xp" -> last use time
 _active_xp_buffs:  dict[str, dict]  = {}  # player_id -> {"bonus_pct": int, "charges": int}
+_dungeon_runs:     dict[str, DungeonRun] = {}  # run_id -> DungeonRun (ephemeral)
 
 # Class stat multipliers (hp_mult, damage_mult)
 CLASS_STATS: dict[str, tuple[float, float]] = {
@@ -1473,6 +1475,80 @@ async def describe_location(name: str, loc_description: str = "", zone: str = ""
 # ──────────────────────────────────────────────
 # ADMIN / DEV TOOLS
 # ──────────────────────────────────────────────
+
+# ── Dungeon endpoints ─────────────────────────────────────────────────────────
+
+@app.post("/dungeon/enter/{player_id}")
+async def dungeon_enter(player_id: str, is_raid: bool = False):
+    p_data = await vec_db.get_player(player_id)
+    if not p_data:
+        raise HTTPException(status_code=404, detail="Player not found.")
+    player = Player(**p_data)
+
+    min_level = 20 if is_raid else 10
+    if player.level < min_level:
+        raise HTTPException(status_code=400,
+            detail=f"You must be level {min_level}+ to enter {'a raid' if is_raid else 'a dungeon'}.")
+
+    run = generate_run(player, is_raid=is_raid)
+    _dungeon_runs[run.id] = run
+    player.active_dungeon_run_id = run.id
+    await vec_db.save_player(player_id, player.model_dump(mode='json'))
+    return run.model_dump(mode='json')
+
+
+@app.post("/dungeon/attack/{run_id}")
+async def dungeon_attack(run_id: str, player_id: str):
+    run = _dungeon_runs.get(run_id)
+    if not run or run.status != "active":
+        raise HTTPException(status_code=404, detail="Dungeon run not found or already ended.")
+
+    p_data = await vec_db.get_player(player_id)
+    if not p_data:
+        raise HTTPException(status_code=404, detail="Player not found.")
+    player = Player(**p_data)
+
+    result = resolve_round(run, player)
+
+    # Persist updated player
+    await vec_db.save_player(player_id, player.model_dump(mode='json'))
+    # Update in-memory run from result
+    _dungeon_runs[run_id] = DungeonRun(**result["run"])
+
+    return {
+        **result,
+        "player_hp":    player.hp,
+        "player_max_hp": player.max_hp,
+        "player_xp":    player.xp,
+        "player_gold":  player.gold,
+        "player_level": player.level,
+        "player_inventory": [i.model_dump(mode='json') for i in player.inventory],
+    }
+
+
+@app.post("/dungeon/advance/{run_id}")
+async def dungeon_advance(run_id: str, player_id: str):
+    run = _dungeon_runs.get(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Dungeon run not found.")
+    if not run.rooms[run.room_index].cleared:
+        raise HTTPException(status_code=400, detail="Current room is not cleared yet.")
+    if run.room_index >= len(run.rooms) - 1:
+        raise HTTPException(status_code=400, detail="Already in the final room.")
+    run.room_index += 1
+    return run.model_dump(mode='json')
+
+
+@app.post("/dungeon/flee/{run_id}")
+async def dungeon_flee(run_id: str, player_id: str):
+    _dungeon_runs.pop(run_id, None)
+    p_data = await vec_db.get_player(player_id)
+    if p_data:
+        player = Player(**p_data)
+        player.active_dungeon_run_id = None
+        await vec_db.save_player(player_id, player.model_dump(mode='json'))
+    return {"success": True}
+
 
 @app.post("/admin/reset")
 async def reset_all_data():
