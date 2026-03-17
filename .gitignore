@@ -193,6 +193,9 @@ tramp
 .turbo/
 .parcel-cache/
 
+# ── Claude Code (local only) ──────────────────
+.claude/settings.local.json
+
 # ── Misc ──────────────────────────────────────
 *.pid
 *.seed
