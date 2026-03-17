@@ -632,6 +632,18 @@ The backend DB is authoritative. The frontend applies optimistic updates (local 
 **Attack cooldown is in-memory only (`_attack_times` dict).**
 Restarting the server resets all attack cooldowns. This is fine for a single-player game but would need Redis or similar for multi-player.
 
+## Future Potential Updates
+
+Ideas that fit the design philosophy (frictionless, solo-friendly, endlessly progressive) but are large enough to be their own milestone.
+
+### AI Party Members for Dungeons & Raids
+
+When you enter a dungeon or raid, the game assembles a full party of AI companions sized and specced for your class. The composition is role-aware — a Warrior queuing for a dungeon gets two DPS companions and a Healer; a Priest gets two tanks and a DPS. Party members are not generic: they are procedurally named characters with classes, gear, and a level appropriate to the content.
+
+Inside the dungeon window, party members contribute DPS each round (logged alongside the player's own hits), use abilities that react to the fight state (a Healer top-offs below 40% HP, a Rogue uses Evasion when the boss enrages), and shout contextual lines in the chat feed — celebrating crits, warning about AOE, calling out a rare drop. After a kill, each member "loots" their share and reacts: *"Finally, a chest piece upgrade!"* or *"Ah, can't use that — all yours."* Loot distribution is smart: if an item drops that is best-in-slot for a companion role they don't fill, it routes to the player automatically.
+
+Party state lives in the zone object for the duration of the dungeon and is cleared on exit — no persistence overhead, no save-slot complexity. The heavy lift is prompting the LLM to generate one combined combat-commentary-and-reaction line per round rather than per party member, keeping token usage comparable to the current single-player combat log.
+
 ---
 
 *Built by Ocean Bennett*
