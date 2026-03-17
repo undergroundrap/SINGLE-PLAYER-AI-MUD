@@ -372,6 +372,9 @@ def resolve_round(run: DungeonRun, player: Player) -> dict:
         player.level += 1
         player.next_level_xp = ScalingMath.get_xp_required(player.level)
         leveled_up = True
+        player.max_hp = ScalingMath.get_max_hp(player.level)
+        player.hp = player.max_hp
+        player.damage = ScalingMath.get_damage(player.level)
         round_log.append(f"  ⬆ LEVEL UP! Now level {player.level}!")
 
     # ── 9a. Keep rolling combat log (last 5 meaningful lines) ────────────────

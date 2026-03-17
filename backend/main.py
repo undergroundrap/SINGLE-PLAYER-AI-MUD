@@ -403,7 +403,7 @@ async def travel_to_zone(player_id: str, is_dungeon: bool = False, is_raid: bool
     # Zone travel gate — must complete at least 2 quests from the current zone first
     if not is_dungeon and not is_raid:
         current_zone_id = player.current_zone_id
-        zone_quests_done = sum(1 for qid in player.completed_quest_ids if current_zone_id in qid)
+        zone_quests_done = sum(1 for qid in player.completed_quest_ids if qid.endswith(current_zone_id) or f"_{current_zone_id}" in qid)
         if zone_quests_done < 2:
             raise HTTPException(
                 status_code=400,
@@ -773,7 +773,8 @@ async def equip_item(player_id: str, item_id: str):
     player.inventory = [i for i in player.inventory if i.id != item_id]
 
     await vec_db.save_player(player_id, player.model_dump(mode='json'))
-    return {"success": True, "equipped": item.model_dump(mode='json'), "slot": item.slot}
+    return {"success": True, "equipped": item.model_dump(mode='json'), "slot": item.slot,
+            "gear_score": calculate_gear_score(player)}
 
 
 @app.post("/action/unequip/{player_id}")
@@ -792,7 +793,8 @@ async def unequip_item(player_id: str, slot: str):
     player.equipment[slot] = Item(id="", name="None", description="", level=0, rarity="Common", stats={}, slot=slot)
 
     await vec_db.save_player(player_id, player.model_dump(mode='json'))
-    return {"success": True, "unequipped": item.model_dump(mode='json'), "slot": slot}
+    return {"success": True, "unequipped": item.model_dump(mode='json'), "slot": slot,
+            "gear_score": calculate_gear_score(player)}
 
 
 @app.post("/action/use/{player_id}")
@@ -1556,8 +1558,13 @@ async def dungeon_attack(run_id: str, player_id: str):
 
     # Persist updated player
     await vec_db.save_player(player_id, player.model_dump(mode='json'))
-    # Update in-memory run from result
-    _dungeon_runs[run_id] = DungeonRun(**result["run"])
+    # Update in-memory run from result; evict once terminal
+    updated_run = DungeonRun(**result["run"])
+    if updated_run.status in ("cleared", "wiped"):
+        _dungeon_runs.pop(run_id, None)
+        player.active_dungeon_run_id = None
+    else:
+        _dungeon_runs[run_id] = updated_run
 
     return {
         **result,

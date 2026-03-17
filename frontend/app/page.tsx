@@ -35,7 +35,7 @@ const CLASS_FLAVOR: Record<string, string> = {
 
 // Returns the new progress value if this quest is tracked by the kill, otherwise null.
 const GATHER_SUFFIX_RE = / (trophy|tusk|fang|pelt|wing|tail|hide|scale|stinger|ear|bone|finger|claw|horn|core|essence|shard|crystal|badge)$/i;
-function questNewProgress(q: any, targetName: string, targetIsNamed: boolean): number | null {
+function questNewProgress(q: any, targetName: string, targetIsNamed: boolean, targetIsElite?: boolean): number | null {
   // targetName must CONTAIN the quest target (e.g. "Veteran Cave Bat" contains "Cave Bat")
   // NOT the reverse — otherwise killing "Bat" would wrongly credit a "Cave Bat" quest
   const mob = targetName.toLowerCase().includes(q.target_id.toLowerCase());
@@ -43,7 +43,7 @@ function questNewProgress(q: any, targetName: string, targetIsNamed: boolean): n
     ? q.target_id.toLowerCase().replace(GATHER_SUFFIX_RE, '').trim()
     : null;
   const tracked = (q.quest_type === 'kill' && mob)
-               || (q.quest_type === 'hunt' && targetIsNamed)
+               || (q.quest_type === 'hunt' && (targetIsNamed || !!targetIsElite))
                || (q.quest_type === 'gather' && !!gatherBase && targetName.toLowerCase().includes(gatherBase));
   return tracked ? Math.min(q.target_count, q.current_progress + 1) : null;
 }
@@ -1804,7 +1804,7 @@ export default function Home() {
               const questLogs: Array<{ msg: string; type: 'system' | 'hint' }> = [];
               if (data.target_dead) {
                 (player?.active_quests || []).forEach((q: any) => {
-                  const newProg = questNewProgress(q, targetStr, data.target_is_named);
+                  const newProg = questNewProgress(q, targetStr, data.target_is_named, data.target_is_elite);
                   if (newProg === null) return;
                   if (newProg >= q.target_count && !q.is_completed) {
                     questLogs.push({ msg: `★ QUEST COMPLETE: "${q.title}"! Return to turn in.`, type: 'system' });
@@ -1823,7 +1823,7 @@ export default function Home() {
 
                 if (data.target_dead) {
                   updatedQuests = updatedQuests.map((q: any) => {
-                    const newProg = questNewProgress(q, targetStr, data.target_is_named);
+                    const newProg = questNewProgress(q, targetStr, data.target_is_named, data.target_is_elite);
                     if (newProg === null) return q;
                     return { ...q, current_progress: newProg, is_completed: newProg >= q.target_count };
                   });
@@ -1895,7 +1895,7 @@ export default function Home() {
 
                 // Sync quest progress to backend
                 (player?.active_quests || []).forEach(async (q: any) => {
-                  const newProg = questNewProgress(q, targetStr, data.target_is_named);
+                  const newProg = questNewProgress(q, targetStr, data.target_is_named, data.target_is_elite);
                   if (newProg === null) return;
                   try { await fetch(`http://localhost:8000/quests/progress/${playerId}?quest_id=${q.id}&progress=${newProg}`, { method: 'POST' }); } catch {}
                 });
@@ -2027,6 +2027,7 @@ export default function Home() {
             } else if (data.success) {
               const statStr = item.stats ? Object.entries(item.stats).map(([k, v]) => `+${v} ${k}`).join(', ') : '';
               addLog(`Equipped [${item.name}] to ${data.slot.replace('_', ' ')}. ${statStr}`, "system");
+              if (data.gear_score != null) setGearScore(data.gear_score);
               // Also add back any displaced item that backend swapped out
               setPlayer((prev: any) => {
                 const displaced = prev.equipment?.[data.slot];
@@ -2061,6 +2062,7 @@ export default function Home() {
             if (!res.ok) { addLog(data.detail || "Nothing equipped there.", "error"); }
             else if (data.success) {
               addLog(`Unequipped [${data.unequipped.name}] from ${slot.replace('_',' ')} → moved to bag.`, "system");
+              if (data.gear_score != null) setGearScore(data.gear_score);
               setPlayer((prev: any) => ({
                 ...prev,
                 equipment: { ...prev.equipment, [slot]: { name: 'None' } },
