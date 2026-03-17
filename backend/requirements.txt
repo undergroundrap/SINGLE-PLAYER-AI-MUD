@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+openai
+pydantic
+pydantic-settings
+jinja2
+python-multipart

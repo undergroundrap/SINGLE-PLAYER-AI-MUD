@@ -1,0 +1,207 @@
+# ──────────────────────────────────────────────
+# SINGLE PLAYER AI MUD — .gitignore
+# ──────────────────────────────────────────────
+
+# ── Game Data (SQLite) ────────────────────────
+# Player saves, zones, lore — never commit
+backend/data/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# ── Python ────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+*.pdb
+.Python
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+ENV/
+env.bak/
+venv.bak/
+.python-version
+Pipfile.lock
+poetry.lock
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+wheels/
+*.whl
+MANIFEST
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Testing & coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+*.py,cover
+nosetests.xml
+test-results/
+
+# Type checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pytype/
+.pyre/
+
+
+# ── Node / Next.js ────────────────────────────
+node_modules/
+.next/
+out/
+.cache/
+*.tsbuildinfo
+next-env.d.ts
+
+# Package manager lock files (keep package-lock.json — it pins exact deps)
+yarn.lock
+pnpm-lock.yaml
+
+# Dependency directories (legacy)
+jspm_packages/
+bower_components/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+*.log
+logs/
+
+# ── Environment & Secrets ─────────────────────
+.env
+.env.local
+.env.development
+.env.development.local
+.env.test
+.env.test.local
+.env.production
+.env.production.local
+.env*.local
+*.env
+.envrc
+
+# Credentials / keys — never commit these
+secrets.json
+secrets.yaml
+secrets.yml
+credentials.json
+credentials.yaml
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+service-account*.json
+*-service-account.json
+firebase*.json
+google-credentials*.json
+api_keys.*
+config/secrets.*
+
+# ── OS files ──────────────────────────────────
+# macOS
+.DS_Store
+.DS_Store?
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.fseventsd
+.TemporaryItems
+.DocumentRevisions-V100
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+*.stackdump
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ── Editors & IDEs ────────────────────────────
+# VSCode — keep extensions.json and settings.json if you want to share them,
+# but never commit personal launch configs or local workspace files
+.vscode/launch.json
+.vscode/*.code-workspace
+.history/
+*.vsix
+
+# JetBrains (PyCharm, WebStorm, etc.)
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Vim / Neovim
+*.swp
+*.swo
+*.swn
+*.un~
+Session.vim
+.netrwhist
+
+# Emacs
+\#*\#
+.\#*
+*.elc
+auto-save-list
+tramp
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# ── Deployment / CI ───────────────────────────
+.vercel/
+.netlify/
+.turbo/
+.parcel-cache/
+
+# ── Misc ──────────────────────────────────────
+*.pid
+*.seed
+*.pid.lock
+*.bak
+*.tmp
+*.temp
+*.orig
+*.rej
+*.patch
+*.diff
+dump.rdb
