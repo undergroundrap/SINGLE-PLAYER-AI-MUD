@@ -2084,44 +2084,58 @@ export default function Home() {
       } else if (lowerCmd === 'gather' || lowerCmd === 'forage' || lowerCmd === 'search') {
         if (!playerId) return;
         if (isGathering) { addLog("Already gathering...", "hint"); return; }
+
+        // Auto-gather loop — one press gathers everything until quest complete
         setIsGathering(true);
-        try {
-          const res = await fetch(`http://localhost:8000/action/gather/${playerId}`, { method: 'POST' });
-          const data = await res.json();
-          if (data.on_cooldown) {
-            addLog(data.message, "hint");
-          } else if (!data.success) {
-            addLog(data.message, "hint");
-          } else {
-            data.messages?.forEach((msg: string) => addLog(msg, "system"));
-            // Update quest progress
-            if (data.quest_updates?.length) {
-              setPlayer((prev: any) => {
-                if (!prev) return prev;
-                const updatedQuests = prev.active_quests.map((q: any) => {
-                  const upd = data.quest_updates.find((u: any) => u.id === q.id);
-                  return upd ? { ...q, current_progress: upd.progress, is_completed: upd.completed } : q;
+        (async () => {
+          const GATHER_CD = 8000;
+          try {
+            while (true) {
+              const res = await fetch(`http://localhost:8000/action/gather/${playerId}`, { method: 'POST' });
+              const data = await res.json();
+
+              if (!data.success) {
+                addLog(data.message, "hint");
+                break;
+              }
+
+              data.messages?.forEach((msg: string) => addLog(msg, "system"));
+
+              let allDone = false;
+              if (data.quest_updates?.length) {
+                setPlayer((prev: any) => {
+                  if (!prev) return prev;
+                  const updatedQuests = prev.active_quests.map((q: any) => {
+                    const upd = data.quest_updates.find((u: any) => u.id === q.id);
+                    return upd ? { ...q, current_progress: upd.progress, is_completed: upd.completed } : q;
+                  });
+                  return { ...prev, active_quests: updatedQuests };
                 });
-                return { ...prev, active_quests: updatedQuests };
+                allDone = data.quest_updates.every((u: any) => u.completed);
+              }
+
+              if (allDone) break;
+
+              // Wait for cooldown, animate progress bar, then gather again
+              await new Promise<void>(resolve => {
+                const start = Date.now();
+                const tick = () => {
+                  const elapsed = Date.now() - start;
+                  const pct = Math.min(100, (elapsed / GATHER_CD) * 100);
+                  setGatherCooldown(pct);
+                  if (pct < 100) requestAnimationFrame(tick);
+                  else { setGatherCooldown(0); resolve(); }
+                };
+                requestAnimationFrame(tick);
               });
             }
-            // Animate gather cooldown bar (8s)
-            const GATHER_CD = 8000;
-            const start = Date.now();
-            const tick = () => {
-              const elapsed = Date.now() - start;
-              const pct = Math.min(100, (elapsed / GATHER_CD) * 100);
-              setGatherCooldown(pct);
-              if (pct < 100) requestAnimationFrame(tick);
-              else { setGatherCooldown(0); }
-            };
-            requestAnimationFrame(tick);
+          } catch (err: any) {
+            addLog(`Gather Error: ${err.message}`, "error");
+          } finally {
+            setIsGathering(false);
+            setGatherCooldown(0);
           }
-        } catch (err: any) {
-          addLog(`Gather Error: ${err.message}`, "error");
-        } finally {
-          setIsGathering(false);
-        }
+        })();
 
       } else if (lowerCmd === 'flee' || lowerCmd === 'escape' || lowerCmd === 'disengage') {
         if (!autoAttackTarget) {

@@ -417,9 +417,9 @@ class WorldGenerator:
                     objective = f"Kill {count} {_plural(mob)} — collect their {collect_name}"
                     description = f"Gather {collect_name}s from the {_plural(mob).lower()} in the area."
                 elif quest_type == "forage":
-                    target_id = poi_ids[0]  # first combat area
+                    target_id = poi_ids[2]  # explore landmark — peaceful, no mobs
                     collect_name = collect or "Wild Herb"
-                    poi_name = tpl["pois"][0][0]
+                    poi_name = tpl["pois"][2][0]
                     objective = f"Forage {count} {collect_name} in {poi_name}"
                     description = f"Search {poi_name} for {count} {collect_name}. No combat needed — just look carefully."
                 else:  # kill
@@ -488,7 +488,7 @@ class WorldGenerator:
             {"type": "explore", "target": poi_ids[2], "collect": None,          "count": 1,                     "explore_poi": 2},
             {"type": "hunt",    "target": mob_name,   "collect": None,          "count": 1,                     "explore_poi": None},
             {"type": "kill",    "target": mob_name_3, "collect": None,          "count": random.randint(4, 8),  "explore_poi": None},
-            {"type": "forage",  "target": poi_ids[1], "collect": forage_res,    "count": random.randint(4, 6),  "explore_poi": None},
+            {"type": "forage",  "target": poi_ids[2], "collect": forage_res,    "count": random.randint(4, 6),  "explore_poi": None},
         ]
 
         # 2. AI Narrative Layer
