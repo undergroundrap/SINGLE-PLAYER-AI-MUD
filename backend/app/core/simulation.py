@@ -64,12 +64,18 @@ class SimulationEngine:
         updated = False
         now = time.time()
 
-        # Respawn dead mobs whose timer has expired
+        # Respawn dead mobs whose timer has expired.
+        # Also regen alive mobs that took partial damage when no player is present —
+        # prevents mobs from staying at low HP indefinitely between player visits.
+        player_present = zone_id in self.player_zones
         for loc in zone.locations:
             for mob in loc.mobs:
                 if mob.respawn_at is not None and now >= mob.respawn_at:
                     mob.hp = mob.max_hp
                     mob.respawn_at = None
+                    updated = True
+                elif not player_present and mob.respawn_at is None and mob.hp < mob.max_hp:
+                    mob.hp = mob.max_hp
                     updated = True
 
         for sim_p in zone.simulated_players:
