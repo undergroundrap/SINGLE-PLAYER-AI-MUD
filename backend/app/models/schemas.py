@@ -100,6 +100,8 @@ class Player(CharacterBase):
     kills: int = 0
     explored_location_ids: List[str] = []
     visited_zone_ids: List[str] = []  # All zone IDs ever generated for this character
+    rested_xp: int = 0               # Bonus XP pool accumulated while logged out
+    last_logout_time: float = 0.0    # Unix timestamp recorded on clean logout
 
 class Zone(BaseModel):
     id: str

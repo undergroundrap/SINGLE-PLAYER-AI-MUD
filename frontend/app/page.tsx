@@ -68,6 +68,9 @@ export default function Home() {
   const [healCd, setHealCd] = useState<number>(0);    // seconds remaining on heal cooldown
   const [xpCd, setXpCd] = useState<number>(0);        // seconds remaining on elixir cooldown
   const [activeXpBuff, setActiveXpBuff] = useState<{ bonus_pct: number; charges: number } | null>(null);
+  // Rested XP
+  const [restedXp, setRestedXp] = useState<number>(0);
+  const [restedXpCap, setRestedXpCap] = useState<number>(0);
   // null → idle | 'choose' → pick what to delete | 'single' → confirm this char | 'all' → confirm wipe all
   const [resetConfirm, setResetConfirm] = useState<null | 'choose' | 'single' | 'all'>(null);
   const autoAttackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -356,6 +359,16 @@ export default function Home() {
     }, 30000 + Math.random() * 30000);
     return () => clearInterval(interval);
   }, [step]);
+
+  // Stamp logout time so rested XP accumulates while offline
+  useEffect(() => {
+    if (!playerId) return;
+    const handleUnload = () => {
+      navigator.sendBeacon(`http://localhost:8000/action/logout/${playerId}`);
+    };
+    window.addEventListener('beforeunload', handleUnload);
+    return () => window.removeEventListener('beforeunload', handleUnload);
+  }, [playerId]);
 
   // Action Keybinds [1-9]
   useEffect(() => {
@@ -1043,6 +1056,15 @@ export default function Home() {
             if (data.player.current_location_id) {
               setExploredLocations(new Set([data.player.current_location_id]));
             }
+            // Compute rested XP accumulated since last logout
+            fetch(`http://localhost:8000/action/login/${data.player_id}`, { method: 'POST' })
+              .then(r => r.json()).then(rd => {
+                setRestedXp(rd.rested_xp ?? 0);
+                setRestedXpCap(rd.rested_xp_cap ?? 0);
+                if ((rd.rested_xp ?? 0) > 0) {
+                  addLog(`💤 You are Rested! Next kills grant 2× XP (${rd.rested_xp} XP pool).`, 'system');
+                }
+              }).catch(() => {});
             const currentLoc = data.zone.locations?.find((l: any) => l.id === data.player.current_location_id) || data.zone.locations?.[0];
             setLogs([
               { text: `━━━ CHRONICLE RESUMED ━━━`, type: "system" },
@@ -1104,6 +1126,8 @@ export default function Home() {
         setPlayer(data.player);
         setPlayerId(data.player_id);
         setZone(data.zone);
+        setRestedXp(0);
+        setRestedXpCap(Math.floor((data.player.next_level_xp ?? 100) * 1.5));
         addLog(`The world begins to take shape...`, "system");
         addLog(`Welcome, ${name} the ${creationData.race} ${creationData.charClass}.`, "system");
 
@@ -1568,6 +1592,11 @@ export default function Home() {
                   ? { hp: data.player_hp, current_location_id: data.respawn_location_id ?? prev.current_location_id }
                   : { hp: data.player_hp };
 
+                // Drain rested XP pool from local state
+                if (data.rested_bonus > 0) {
+                  setRestedXp(data.rested_xp ?? 0);
+                }
+
                 return {
                   ...prev,
                   ...hpUpdate,
@@ -1581,7 +1610,8 @@ export default function Home() {
               });
 
               if (data.target_dead) {
-                const killLine = `${nameplate ? nameplate + ' ' : ''}${data.target_name} slain. +${data.xp_gained} XP${data.gold_gained ? ` +${data.gold_gained}g` : ''}`;
+                const restedTag = data.rested_bonus > 0 ? ` 💤(+${data.rested_bonus} rested)` : '';
+                const killLine = `${nameplate ? nameplate + ' ' : ''}${data.target_name} slain. +${data.xp_gained} XP${restedTag}${data.gold_gained ? ` +${data.gold_gained}g` : ''}`;
                 addLog(killLine, "system");
 
 
@@ -2148,10 +2178,18 @@ export default function Home() {
 
               <div className="stat-item">
                 <div className="stat-header">
-                  <span className="stat-label">XP</span>
+                  <span className="stat-label">XP{restedXp > 0 ? ' 💤 RESTED' : ''}</span>
                   <span className="stat-value">{player?.xp || 0} / {player?.next_level_xp || 100}</span>
                 </div>
-                <div className="progress-container">
+                <div className="progress-container" style={{ position: 'relative' }}>
+                  {/* Rested XP pool shown as a faint teal overlay behind the XP fill */}
+                  {restedXp > 0 && restedXpCap > 0 && (
+                    <div style={{
+                      position: 'absolute', left: 0, top: 0, height: '100%',
+                      width: `${Math.min(100, (restedXp / (player?.next_level_xp || 100)) * 100)}%`,
+                      background: 'rgba(0,200,200,0.25)', borderRadius: 4,
+                    }} />
+                  )}
                   <div className="progress-fill xp-fill" style={{ width: `${((player?.xp || 0) / (player?.next_level_xp || 100)) * 100}%` }}>
                     <div className="progress-shine" />
                   </div>

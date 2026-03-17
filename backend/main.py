@@ -576,6 +576,13 @@ async def attack(player_id: str, mob_name: str):
         xp_mult  = 4 if target_mob.is_named else (2 if target_mob.is_elite else 1)
         xp_gained = xp_base * xp_mult
 
+        # Apply rested XP bonus (2× while pool lasts)
+        rested_bonus = 0
+        if player.rested_xp > 0:
+            rested_bonus = min(xp_gained, player.rested_xp)
+            xp_gained   += rested_bonus
+            player.rested_xp -= rested_bonus
+
         # Apply active Elixir of Insight buff if present
         xp_buff = _active_xp_buffs.get(player_id)
         if xp_buff:
@@ -688,6 +695,8 @@ async def attack(player_id: str, mob_name: str):
         "target_is_elite":     target_mob.is_elite,
         "target_is_named":     target_mob.is_named,
         "xp_gained":           xp_gained,
+        "rested_bonus":        rested_bonus,
+        "rested_xp":           player.rested_xp,
         "gold_gained":         gold_gained,
         "loot_item":           loot_item.model_dump(mode='json') if loot_item else None,
         "auto_equipped":        auto_equipped,
@@ -821,6 +830,43 @@ async def rest_player(player_id: str, hp: int):
     player.hp = max(1, min(player.max_hp, hp))
     await vec_db.save_player(player_id, player.model_dump(mode='json'))
     return {"success": True, "hp": player.hp, "max_hp": player.max_hp}
+
+
+@app.post("/action/login/{player_id}")
+async def player_login(player_id: str):
+    """Called when the player loads their character.
+    Computes rested XP accumulated since last logout: next_level_xp/8 per real hour,
+    capped at 1.5× next_level_xp. Returns the current rested pool."""
+    p_data = await vec_db.get_player(player_id)
+    if not p_data:
+        raise HTTPException(status_code=404, detail="Player not found")
+    player = Player(**p_data)
+
+    if player.last_logout_time > 0:
+        hours_offline = (time.time() - player.last_logout_time) / 3600.0
+        rest_rate     = player.next_level_xp / 8  # 1 full level's rest in 8 hours
+        rest_gained   = int(hours_offline * rest_rate)
+        cap           = int(player.next_level_xp * 1.5)
+        player.rested_xp       = min(player.rested_xp + rest_gained, cap)
+        player.last_logout_time = 0.0  # clear — they're online now
+        await vec_db.save_player(player_id, player.model_dump(mode='json'))
+
+    return {
+        "rested_xp":     player.rested_xp,
+        "rested_xp_cap": int(player.next_level_xp * 1.5),
+    }
+
+
+@app.post("/action/logout/{player_id}")
+async def player_logout(player_id: str):
+    """Stamps the logout time so rested XP can accumulate while offline."""
+    p_data = await vec_db.get_player(player_id)
+    if not p_data:
+        raise HTTPException(status_code=404, detail="Player not found")
+    player = Player(**p_data)
+    player.last_logout_time = time.time()
+    await vec_db.save_player(player_id, player.model_dump(mode='json'))
+    return {"ok": True}
 
 
 # ──────────────────────────────────────────────

@@ -199,6 +199,8 @@ The dungeon and raid portal buttons are **always visible in the sidebar from lev
 
 **Out-of-combat HP regen:** 2% of max HP per second kicks in after 6 seconds without taking damage. The frontend regen timer syncs the new HP to the backend (`POST /action/rest/{player_id}`) every ~10 seconds — reconnecting or refreshing restores the regened HP rather than snapping back to the last combat value.
 
+**Rested XP — the daily login hook:** When you log out cleanly (`POST /action/logout/{player_id}` via `sendBeacon`), the server stamps your logout time. On the next login (`POST /action/login/{player_id}`), rest accumulated at a rate of `next_level_xp / 8` per real hour is added to your pool, capped at 1.5× the current level's XP requirement. While you have rested XP, every kill grants 2× XP and drains the pool by the base XP amount — the transition back to 1× is seamless. The XP bar shows a faint teal overlay representing the rested pool, and kill log lines show `💤(+N rested)` so the bonus is always visible. The message `💤 You are Rested!` greets you on login when the pool is non-zero.
+
 **Consumables — closing the gold loop:** Every vendor stocks two potions that scale in price with zone level, giving gold a permanent purpose:
 
 | Item | Effect | Cooldown | Price |
@@ -439,6 +441,8 @@ All endpoints are in `backend/main.py`. Backend runs on `http://localhost:8000`.
 | `POST` | `/action/talk/{player_id}` | Talk to NPC. Param: `npc_name`. Returns `dialogue`, `offered_quests`, vendor fields |
 | `POST` | `/action/use/{player_id}` | Use a consumable from inventory. Param: `item_id`. Enforces per-type cooldowns (`heal` 60 s, `xp` 5 min). Returns `player_hp`, `active_xp_buff`, `heal_cd`, `xp_cd`. |
 | `POST` | `/action/rest/{player_id}` | Persist out-of-combat HP regen. Param: `hp` (clamped to `[1, max_hp]` server-side). Called by frontend timer every ~10 s while regenerating. |
+| `POST` | `/action/login/{player_id}` | Compute and credit rested XP accumulated since last logout. Called on character load. Returns `rested_xp`, `rested_xp_cap`. |
+| `POST` | `/action/logout/{player_id}` | Stamp logout time for rested XP calculation. Called via `sendBeacon` on `beforeunload`. |
 
 ### Quests
 | Method | Path | Description |
