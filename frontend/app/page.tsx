@@ -1461,7 +1461,13 @@ export default function Home() {
           addLog(`${deadMobs.length} creature(s) slain here — respawn in ~${soonest}s.`, "hint");
         }
 
-        // Handled above in room look
+        // Forage hint — shown when a forage quest targets this exact location
+        const forageHere = (player?.active_quests || []).find((q: any) =>
+          q.quest_type === 'forage' && q.target_id === player?.current_location_id && !q.is_completed
+        );
+        if (forageHere) {
+          addLog(`✦ ${forageHere.collect_name || "Resources"} can be gathered here (${forageHere.current_progress}/${forageHere.target_count}). Click GATHER or type 'gather'.`, "hint");
+        }
 
         if (loc?.exits && Object.keys(loc.exits).length > 0) {
           addLog("EXITS:", "hint");
@@ -1473,10 +1479,10 @@ export default function Home() {
 
         // Only show quests if already revealed by talking
         const locQuests = zone?.quests?.filter((q: any) => !player?.active_quests?.some((aq: any) => aq.id === q.id)) || [];
-        const revealedQuests = locQuests.filter((q: any) => {
-          const giver = zone?.locations?.find((l: any) => l.npcs?.some((n: any) => n.role === 'quest_giver'))?.npcs?.find((n: any) => n.role === 'quest_giver');
-          return revealedNpcs.has(giver?.id);
-        });
+        const anyGiverRevealed = (zone?.locations || []).some((l: any) =>
+          (l.npcs || []).some((n: any) => n.role === 'quest_giver' && revealedNpcs.has(n.id))
+        );
+        const revealedQuests = anyGiverRevealed ? locQuests : [];
 
         if (revealedQuests.length > 0) {
           addLog("AVAILABLE QUESTS:", "hint");
@@ -1515,10 +1521,10 @@ export default function Home() {
 
         // Only revealed quests are available for acceptance
         const locQuests = zone?.quests?.filter((q: any) => !player?.active_quests?.some((aq: any) => aq.id === q.id)) || [];
-        const revealedQuests = locQuests.filter((q: any) => {
-          const giver = zone?.locations?.find((l: any) => l.npcs?.some((n: any) => n.role === 'quest_giver'))?.npcs?.find((n: any) => n.role === 'quest_giver');
-          return revealedNpcs.has(giver?.id);
-        });
+        const anyGiverRevealed = (zone?.locations || []).some((l: any) =>
+          (l.npcs || []).some((n: any) => n.role === 'quest_giver' && revealedNpcs.has(n.id))
+        );
+        const revealedQuests = anyGiverRevealed ? locQuests : [];
 
         const handleAccept = async (q: any) => {
           try {
@@ -1616,6 +1622,13 @@ export default function Home() {
           setExploredLocations(prev => new Set(prev).add(nextLoc.id));
           addLog(`You travel to: ${nextLoc.name}`, "system");
           addLog(nextLoc.description, "system");
+          // Forage hint on arrival
+          const forageQ = (player?.active_quests || []).find((q: any) =>
+            q.quest_type === 'forage' && q.target_id === nextLoc.id && !q.is_completed
+          );
+          if (forageQ) {
+            addLog(`✦ ${forageQ.collect_name || "Resources"} can be gathered here (${forageQ.current_progress}/${forageQ.target_count}). Click GATHER or type 'gather'.`, "hint");
+          }
           describeLocation(nextLoc.name, nextLoc.description, zone?.name || '');
           if (nextLoc.npcs?.length > 0) {
             addLog("NPCS PRESENT:", "hint");

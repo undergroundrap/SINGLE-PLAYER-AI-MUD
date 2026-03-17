@@ -647,13 +647,6 @@ async def attack(player_id: str, mob_name: str):
 
 @app.post("/action/gather/{player_id}")
 async def gather(player_id: str):
-    now = time.time()
-    last = _gather_times.get(player_id, 0)
-    if now - last < GATHER_COOLDOWN:
-        wait = round(GATHER_COOLDOWN - (now - last), 2)
-        return {"success": False, "message": f"You search carefully... ({wait}s remaining)", "on_cooldown": True}
-    _gather_times[player_id] = now
-
     p_data = await vec_db.get_player(player_id)
     if not p_data:
         raise HTTPException(status_code=404, detail="Player not found")
@@ -667,7 +660,25 @@ async def gather(player_id: str):
         and not q.is_completed
     ]
     if not forage_quests:
-        return {"success": False, "message": "There's nothing to forage here."}
+        # Give a helpful hint pointing to the right location
+        all_forage = [q for q in player.active_quests if q.quest_type == "forage" and not q.is_completed]
+        if all_forage:
+            z_data = await vec_db.get_zone(player.current_zone_id)
+            if z_data:
+                zone = Zone(**z_data)
+                q0 = all_forage[0]
+                target_loc = next((l for l in zone.locations if l.id == q0.target_id), None)
+                if target_loc:
+                    return {"success": False, "message": f"Nothing to forage here. Travel to {target_loc.name} to gather {q0.collect_name or 'resources'}."}
+        return {"success": False, "message": "No active forage quest. Talk to a quest giver for a gathering assignment."}
+
+    # Apply cooldown only when there's actually something to gather
+    now = time.time()
+    last = _gather_times.get(player_id, 0)
+    if now - last < GATHER_COOLDOWN:
+        wait = round(GATHER_COOLDOWN - (now - last), 2)
+        return {"success": False, "message": f"You search carefully... ({wait}s remaining)", "on_cooldown": True}
+    _gather_times[player_id] = now
 
     messages = []
     quest_updates = []
