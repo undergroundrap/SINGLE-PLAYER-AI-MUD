@@ -153,14 +153,14 @@ SINGLE-PLAYER-AI-MUD/
 `world_generator.py → WorldGenerator.generate_zone(level, is_dungeon, is_raid)`
 
 Two-phase approach:
-- **Phase 1 (Math):** Deterministic skeleton — zone ID, hub + 3 POI locations, 3 distinct mob names (one per POI), 3 quest skeletons chosen from 4 archetypes, XP values from `ScalingMath`
+- **Phase 1 (Math):** Deterministic skeleton — zone ID, hub + 4 POI locations, 3–4 distinct mob names, 5 quest skeletons covering all 4 archetypes, XP values from `ScalingMath`
 - **Phase 2 (AI):** Calls LM Studio for names, descriptions, NPC dialogue, quest flavor text. Falls back to a hardcoded gritty-fantasy dictionary if AI is unavailable
 - Each hub gets **2 quest giver NPCs** (quests split between them) + a vendor NPC
 - Mobs spawn with a 20% elite chance and 5% named chance per slot (`_make_mobs`)
 - **Dungeons:** the final POI is always a boss chamber (`force_boss=True`) — guaranteed named boss + elite guards, location labeled `[BOSS]`
 - **Starter zones (level ≤5):** 5 distinct hand-crafted templates (Whispering Glade, Moonshaded Glade, Saltcliff Reach, The Ashen Fields, Barrowmoor) — picked randomly so players rarely see the same start twice
 
-**Quest archetypes** (3 of 4 picked per zone):
+**Quest archetypes** (5 quests per zone, all 4 types used):
 
 | Type | Mechanic | Completion |
 |---|---|---|
@@ -267,7 +267,7 @@ Wraps the `openai` SDK pointed at LM Studio's local server. Three methods:
 **`max_tokens` budget per call site:**
 | Call | Limit | Reason |
 |------|-------|--------|
-| World chat reply | 40 | Casual 1-liner responses |
+| World chat reply | 45 | Casual 1-liner responses |
 | Ambiance message | 40 | Single server notification |
 | Location description | 60 | One atmospheric sentence |
 | Mob / NPC description | 80 | Two vivid sentences |
@@ -377,7 +377,7 @@ Turn-in happens at any hub quest giver NPC via `POST /quests/complete/{player_id
 | `Mob` | `id`, `name`, `level`, `hp/max_hp`, `damage`, `loot_table`, `respawn_at` (Unix ts or None), `is_elite`, `is_named` | `respawn_at = None` means alive |
 | `NPC` | `id`, `name`, `role` (`quest_giver/vendor/trainer`), `dialogue`, `quests_offered`, `vendor_items` | Vendors have `vendor_items: List[Dict]` with `price` key |
 | `Item` | `id`, `name`, `description`, `level`, `rarity`, `stats: Dict[str, int]`, `slot` | Stats: `armor` or `damage`. Slot matches equipment key |
-| `Quest` | `id`, `title`, `objective`, `quest_type` (`kill/gather/speak/explore`), `target_id`, `target_count`, `current_progress`, `xp_reward`, `is_completed` | |
+| `Quest` | `id`, `title`, `objective`, `quest_type` (`kill/gather/hunt/explore`), `target_id`, `collect_name` (gather quests), `target_count`, `current_progress`, `xp_reward`, `is_completed` | |
 | `SimulatedPlayer` | `id`, `name`, `race`, `char_class`, `current_location_id`, `status` | Background actors — not real players. `current_location_id` resolves to a location name in the `/who` output. |
 
 ---
@@ -567,7 +567,7 @@ The game runs fully without LM Studio — AI calls fail gracefully and fall back
 3. Add a button style for the new role in the side panel NPC section in `page.tsx`
 
 ### Adding a new zone template (starter content)
-Edit the `templates` list in `world_generator.py → generate_zone()`. Each template needs: `name`, `desc`, `hub` (name, description tuple), `pois` (2 locations), `npc` (name, greeting tuple), `quests` (list of `(title, type, target, count)` tuples).
+Edit the `templates` list in `world_generator.py → generate_zone()`. Each template needs: `name`, `desc`, `hub` (name, description tuple), `pois` (3 locations), `npc` (name, greeting tuple), `quests` (list of `(title, type, mob_or_None, count, collect_name_or_None)` tuples).
 
 ### Changing the combat formula
 All hit/damage math is in `combat_engine.py`. `scaling_math.py` controls the HP/damage/XP curves per level. These two files are the only places to touch for balance changes.
