@@ -160,21 +160,22 @@ Two-phase approach:
 - **Dungeons:** the final POI is always a boss chamber (`force_boss=True`) — guaranteed named boss + elite guards, location labeled `[BOSS]`
 - **Starter zones (level ≤5):** 5 distinct hand-crafted templates (Whispering Glade, Moonshaded Glade, Saltcliff Reach, The Ashen Fields, Barrowmoor) — picked randomly so players rarely see the same start twice
 
-**Quest archetypes** (5 quests per zone, all 4 types used):
+**Quest archetypes** (6 quests per zone, all 5 types used):
 
 | Type | Mechanic | Completion |
 |---|---|---|
 | `kill` | Slay N of a named mob | Client-side on mob death, synced to backend |
 | `hunt` | Kill the zone's named/boss mob (1 target) | Triggers on `target_is_named == true` in attack response |
 | `gather` | Collect N items from a mob type | Tracks on kill — strips mob-specific collectible suffix (Tusk, Fang, Pelt, Wing, Tail, Hide, Scale, etc.) to match base mob name. Each mob type has a specific collectible noun — Boars drop Tusks, Spiders drop Fangs, Bats drop Wings, etc. |
-| `explore` | Travel to a specific POI location | Auto-completes server-side in `POST /action/move` when player reaches target |
+| `explore` | Travel to a specific POI location | Auto-completes server-side in `POST /action/move` when player reaches target. Not re-offered once visited. |
+| `forage` | Collect N resources using the `gather` command at a specific location (no combat) | Backend endpoint `/action/gather` — requires standing in `quest.target_id` location. 8 s cooldown per gather. Zone-themed resources: Bog Moss, Wild Herb, Sea Kelp, Ember Root, Glowbloom, etc. |
 
 ### Progression Loop
 
 The intended loop mirrors classic MMO tier structure. Each tier requires you to gear through the previous one:
 
 ```
-Open World (level 1–9)   → kill quests, gather, hunt, explore
+Open World (level 1–9)   → kill quests, gather, hunt, explore, forage
 Dungeon    (level 10+)   → 5-player instanced, Rare/Epic loot (1.6× stats)
                            Gear Score gates the Raid — farm dungeons first
 Raid       (level 20+,   → 10-player instanced, Epic/Legendary loot (2.8× stats)
@@ -322,10 +323,14 @@ Cache is a simple dict: `{id: (data, timestamp)}`. LRU eviction kicks in at 200 
 
 Runs as an `asyncio.create_task` started at FastAPI startup (`@app.on_event("startup")`). Ticks every 10 seconds over all zones currently in the zone cache:
 - Respawns dead mobs whose `respawn_at` Unix timestamp has passed
+- **Regens alive mob HP to full** when no real player is present — prevents mobs from staying at low HP indefinitely after an incomplete fight
 - Moves SimulatedPlayers to adjacent locations (20% chance per tick)
 - Shifts weather (5% chance)
 - Advances `time_of_day` (0.0–1.0, full cycle ~17 minutes)
 - Has a 10% chance to call AI for an ambient zone atmosphere message — **only for zones with a real player currently present** (idle cached zones are skipped to avoid wasteful AI calls)
+
+### Patrol Encounters
+Every 45 seconds the frontend fires `POST /action/patrol_check/{player_id}` when the player is idle in a non-hub location with no live mobs. The backend has a 25% chance to spawn a wandering mob from the zone's existing mob pool (thematically consistent — no generic enemy types). The mob is added to the live location and the client shows `⚠ A [mob] crosses your path!`. The encounter is then treated identically to a normal mob fight.
 
 ### AI Client
 `app/core/ai_client.py → LMStudioClient`
@@ -429,9 +434,10 @@ Applied to all log lines including NPC dialogue, narrative stream output, and co
 
 ### Quest System
 Quests live on the Zone (`zone.quests`) and are accepted into `player.active_quests`. Progress tracking varies by type:
-- **kill / gather:** client-side on mob death, synced to backend via `POST /quests/progress/{player_id}`
+- **kill / gather:** client-side on mob death, synced to backend via `POST /quests/progress/{player_id}`. `gather` and `kill` are distinct quest types — `gather` requires a specific mob collectible and tracks via mob-name matching; `forage` uses the `gather` command and is completely separate.
 - **hunt:** completes when any `target_is_named == true` kill is recorded (uses the backend flag, not mob name matching — immune to named mob rename variants)
-- **explore:** auto-completes server-side in `POST /action/move` when `location_id == quest.target_id`; backend returns `explore_completed` array in the move response
+- **explore:** auto-completes server-side in `POST /action/move` when `location_id == quest.target_id`; backend returns `explore_completed` array in the move response. **Once visited, explore quests for that location are never re-offered.**
+- **forage:** completed by using the `gather` command (or clicking GATHER) while standing in `quest.target_id` location. Backend endpoint `/action/gather` with 8 s cooldown. Progress increments once per gather action. Completely separate from mob-kill gather quests — no crossover.
 
 Turn-in happens at any hub quest giver NPC via `POST /quests/complete/{player_id}`, which awards XP and optionally an item reward. When the final quest in a zone is turned in, the frontend logs a zone-clear message and the travel portal becomes available.
 
@@ -448,7 +454,7 @@ Turn-in happens at any hub quest giver NPC via `POST /quests/complete/{player_id
 | `Mob` | `id`, `name`, `level`, `hp/max_hp`, `damage`, `loot_table`, `respawn_at` (Unix ts or None), `is_elite`, `is_named` | `respawn_at = None` means alive. Reset to `max_hp` and `respawn_at = None` when timer fires. |
 | `NPC` | `id`, `name`, `role` (`quest_giver/vendor/trainer`), `dialogue`, `quests_offered`, `vendor_items` | Vendors have `vendor_items: List[Dict]` with `price` key |
 | `Item` | `id`, `name`, `description`, `level`, `rarity`, `stats: Dict[str, int]`, `slot` | Equipment stats: `armor` or `damage`. Consumables use `slot = "consumable"` with effect encoded in stats: `{"heal_pct": 40}` or `{"xp_bonus_pct": 75, "xp_charges": 5}` |
-| `Quest` | `id`, `title`, `objective`, `quest_type` (`kill/gather/hunt/explore`), `target_id`, `collect_name` (gather quests), `target_count`, `current_progress`, `xp_reward`, `is_completed` | |
+| `Quest` | `id`, `title`, `objective`, `quest_type` (`kill/gather/hunt/explore/forage`), `target_id`, `collect_name` (gather/forage quests), `target_count`, `current_progress`, `xp_reward`, `is_completed` | `forage` quests use `target_id` as a location ID (same as `explore`); progress via `/action/gather` not mob kills. |
 | `SimulatedPlayer` | `id`, `name`, `race`, `char_class`, `current_location_id`, `status` | Background actors — not real players. `current_location_id` resolves to a location name in the `/who` output. |
 | `DungeonRun` | `id`, `player_id`, `dungeon_name`, `dungeon_level`, `is_raid`, `room_index`, `rooms: List[DungeonRoom]`, `party: List[DungeonMember]`, `combat_log`, `status` (`active/cleared/wiped`), `boss_enraged` | Stored in-memory only (`_dungeon_runs` dict). Lost on server restart. |
 | `DungeonRoom` | `index`, `name`, `mobs: List[Mob]`, `cleared` | Rooms 0–2 for dungeons, 0–4 for raids. Room 2 (dungeon) / room 4 (raid) always has a named boss. |
@@ -485,6 +491,8 @@ All endpoints are in `backend/main.py`. Backend runs on `http://localhost:8000`.
 | `POST` | `/action/talk/{player_id}` | Talk to NPC. Param: `npc_name`. Returns `dialogue`, `offered_quests`, vendor fields |
 | `POST` | `/action/use/{player_id}` | Use a consumable from inventory. Param: `item_id`. Enforces per-type cooldowns (`heal` 60 s, `xp` 5 min). Returns `player_hp`, `active_xp_buff`, `heal_cd`, `xp_cd`. |
 | `POST` | `/action/rest/{player_id}` | Persist out-of-combat HP regen. Param: `hp` (clamped to `[1, max_hp]` server-side). Called by frontend timer every ~10 s while regenerating. |
+| `POST` | `/action/gather/{player_id}` | Progress active forage quests targeting current location. 8 s cooldown. Returns `messages`, `quest_updates`. |
+| `POST` | `/action/patrol_check/{player_id}` | 25% chance to spawn a wandering zone-mob in current location (non-hub, no live mobs only). Returns `{ patrol, mob_name, mob_level }`. |
 | `POST` | `/action/login/{player_id}` | Compute and credit rested XP accumulated since last logout. Called on character load. Returns `rested_xp`, `rested_xp_cap`. |
 | `POST` | `/action/logout/{player_id}` | Stamp logout time for rested XP calculation. Called via `sendBeacon` on `beforeunload`. |
 
