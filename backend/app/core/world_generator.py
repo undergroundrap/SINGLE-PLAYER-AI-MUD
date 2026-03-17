@@ -6,6 +6,21 @@ import time
 
 _ELITE_PREFIXES = ["Veteran", "Rabid", "Ancient", "Corrupted", "Savage", "Cursed", "Frenzied"]
 
+# Forage resources keyed by level tier — used for procedural zone forage quests
+_FORAGE_RESOURCES: dict[str, list[str]] = {
+    "low":    ["Wild Herb", "Dewdrop Flower", "Tangled Root", "Mossy Stone", "Dried Fungus"],
+    "mid":    ["Shadow Bloom", "Ember Root", "Venom Cap", "Glowspore", "Petrified Sap"],
+    "high":   ["Void Petal", "Runic Crystal", "Ethereal Dust", "Soulstone Shard", "Nightmare Moss"],
+    "endgame":["Primal Essence", "Ancient Shard", "Corruption Flake", "Void Bloom", "Titan Resin"],
+}
+
+def _forage_resource(level: int) -> str:
+    if level <= 10:   pool = _FORAGE_RESOURCES["low"]
+    elif level <= 20: pool = _FORAGE_RESOURCES["mid"]
+    elif level <= 40: pool = _FORAGE_RESOURCES["high"]
+    else:             pool = _FORAGE_RESOURCES["endgame"]
+    return random.choice(pool)
+
 def _plural(word: str) -> str:
     """Simple English pluralizer for quest objectives."""
     w = word.strip()
@@ -256,6 +271,7 @@ _STARTER_TEMPLATES = [
             ("Boar Hunting",    "kill",    "Boar", 6, None),
             ("Tusk Collection", "gather",  "Boar", 4, "Boar Tusk"),
             ("Ancient Stones",  "explore", None,   1, None),
+            ("Wild Harvest",    "forage",  None,   5, "Wild Herb"),
         ]
     },
     {
@@ -272,6 +288,7 @@ _STARTER_TEMPLATES = [
             ("Spider Menace", "kill",    "Forest Spider", 8, None),
             ("Venom Fangs",   "gather",  "Forest Spider", 5, "Forest Spider Fang"),
             ("Spirit Glade",  "explore", None,            1, None),
+            ("Moonlight Forage", "forage", None,          5, "Glowbloom"),
         ]
     },
     {
@@ -288,6 +305,7 @@ _STARTER_TEMPLATES = [
             ("Clear the Cove",   "kill",    "Feral Hound", 6, None),
             ("Salvage Run",      "gather",  "Feral Hound", 4, "Feral Hound Pelt"),
             ("Clifftop Survey",  "explore", None,          1, None),
+            ("Coastal Harvest",  "forage",  None,          4, "Sea Kelp"),
         ]
     },
     {
@@ -304,6 +322,7 @@ _STARTER_TEMPLATES = [
             ("Rat Cull",           "kill",    "Swamp Rat", 8, None),
             ("Blight Samples",     "gather",  "Swamp Rat", 5, "Swamp Rat Tail"),
             ("Scorched Monument",  "explore", None,        1, None),
+            ("Ashen Harvest",      "forage",  None,        5, "Ember Root"),
         ]
     },
     {
@@ -320,6 +339,7 @@ _STARTER_TEMPLATES = [
             ("Bat Culling",      "kill",    "Cave Bat", 7, None),
             ("Bone Collection",  "gather",  "Cave Bat", 4, "Cave Bat Wing"),
             ("The Ancient Mound","explore", None,       1, None),
+            ("Bog Harvest",      "forage",  None,       5, "Bog Moss"),
         ]
     },
 ]
@@ -396,6 +416,12 @@ class WorldGenerator:
                     collect_name = collect or _collectible_for(mob)
                     objective = f"Kill {count} {_plural(mob)} — collect their {collect_name}"
                     description = f"Gather {collect_name}s from the {_plural(mob).lower()} in the area."
+                elif quest_type == "forage":
+                    target_id = poi_ids[0]  # first combat area
+                    collect_name = collect or "Wild Herb"
+                    poi_name = tpl["pois"][0][0]
+                    objective = f"Forage {count} {collect_name} in {poi_name}"
+                    description = f"Search {poi_name} for {count} {collect_name}. No combat needed — just look carefully."
                 else:  # kill
                     target_id = mob
                     objective = f"Kill {count} {_plural(mob)}"
@@ -454,13 +480,15 @@ class WorldGenerator:
         mob_name, mob_name_2, mob_name_3 = mob_names
         collectible_2 = _collectible_for(mob_name_2)
 
-        # 5 quest skeletons — all used, no shuffle
+        # 6 quest skeletons — NPC1 gets 0-2, NPC2 gets 3-5
+        forage_res = _forage_resource(level)
         quest_skeleton = [
             {"type": "kill",    "target": mob_name,   "collect": None,          "count": random.randint(6, 12), "explore_poi": None},
             {"type": "gather",  "target": mob_name_2, "collect": collectible_2, "count": random.randint(4, 8),  "explore_poi": None},
             {"type": "explore", "target": poi_ids[2], "collect": None,          "count": 1,                     "explore_poi": 2},
             {"type": "hunt",    "target": mob_name,   "collect": None,          "count": 1,                     "explore_poi": None},
             {"type": "kill",    "target": mob_name_3, "collect": None,          "count": random.randint(4, 8),  "explore_poi": None},
+            {"type": "forage",  "target": poi_ids[1], "collect": forage_res,    "count": random.randint(4, 6),  "explore_poi": None},
         ]
 
         # 2. AI Narrative Layer
@@ -567,7 +595,7 @@ class WorldGenerator:
         npc2_dialogue = npc_data[1].get("dialogue", "I have work for you.") if len(npc_data) > 1 else "I have work for you."
 
         npc1_quest_ids = [f"q_{i}_{zone_id}" for i in range(3)]   # quests 0, 1, 2
-        npc2_quest_ids = [f"q_{i}_{zone_id}" for i in range(3, 5)] # quests 3, 4
+        npc2_quest_ids = [f"q_{i}_{zone_id}" for i in range(3, 6)] # quests 3, 4, 5 (includes forage)
 
         hub_loc = Location(
             id=hub_id,
@@ -648,6 +676,13 @@ class WorldGenerator:
                 collect_name = q_skel["collect"]
                 objective = f"Kill {q_skel['count']} {_plural(q_skel['target'])} — collect their {collect_name}"
                 description = q_flavor.get("description", f"Gather {collect_name}s from the {_plural(q_skel['target']).lower()}.")
+            elif q_skel["type"] == "forage":
+                target_id = q_skel["target"]  # poi location id
+                collect_name = q_skel["collect"]
+                poi_loc = next((l for l in locations if l.id == target_id), None)
+                loc_name = poi_loc.name if poi_loc else "the area"
+                objective = f"Forage {q_skel['count']} {collect_name} in {loc_name}"
+                description = f"Search {loc_name} for {collect_name}. No combat needed — just look carefully."
             elif q_skel["type"] == "hunt":
                 target_id = q_skel["target"]
                 objective = f"Slay any named or elite creature in the zone"

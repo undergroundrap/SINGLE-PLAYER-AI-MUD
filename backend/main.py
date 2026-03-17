@@ -19,10 +19,12 @@ import math
 # ──────────────────────────────────────────────
 
 ATTACK_COOLDOWN      = 1.5    # seconds between attacks per player
+GATHER_COOLDOWN      = 8.0    # seconds between gather actions
 POTION_HEAL_COOLDOWN = 60.0   # shared healing potion cooldown
 POTION_XP_COOLDOWN   = 300.0  # elixir of insight cooldown (5 min)
 
 _attack_times:     dict[str, float] = {}  # player_id -> last attack timestamp
+_gather_times:     dict[str, float] = {}  # player_id -> last gather timestamp
 _potion_cooldowns: dict[str, float] = {}  # "{player_id}:heal" | "{player_id}:xp" -> last use time
 _active_xp_buffs:  dict[str, dict]  = {}  # player_id -> {"bonus_pct": int, "charges": int}
 _dungeon_runs:     dict[str, DungeonRun] = {}  # run_id -> DungeonRun (ephemeral)
@@ -624,6 +626,103 @@ async def attack(player_id: str, mob_name: str):
 
 
 # ──────────────────────────────────────────────
+# GATHER (forage quests)
+# ──────────────────────────────────────────────
+
+@app.post("/action/gather/{player_id}")
+async def gather(player_id: str):
+    now = time.time()
+    last = _gather_times.get(player_id, 0)
+    if now - last < GATHER_COOLDOWN:
+        wait = round(GATHER_COOLDOWN - (now - last), 2)
+        return {"success": False, "message": f"You search carefully... ({wait}s remaining)", "on_cooldown": True}
+    _gather_times[player_id] = now
+
+    p_data = await vec_db.get_player(player_id)
+    if not p_data:
+        raise HTTPException(status_code=404, detail="Player not found")
+    player = Player(**p_data)
+
+    # Find active forage quests targeting the player's current location
+    forage_quests = [
+        q for q in player.active_quests
+        if q.quest_type == "forage"
+        and q.target_id == player.current_location_id
+        and not q.is_completed
+    ]
+    if not forage_quests:
+        return {"success": False, "message": "There's nothing to forage here."}
+
+    messages = []
+    quest_updates = []
+    for q in forage_quests:
+        q.current_progress = min(q.target_count, q.current_progress + 1)
+        resource = q.collect_name or "resource"
+        messages.append(f"You gather {resource}. ({q.current_progress}/{q.target_count})")
+        if q.current_progress >= q.target_count:
+            q.is_completed = True
+            messages.append(f"✓ Quest complete: {q.title}!")
+        quest_updates.append({"id": q.id, "progress": q.current_progress, "completed": q.is_completed})
+
+    await vec_db.save_player(player_id, player.model_dump(mode='json'))
+    return {"success": True, "messages": messages, "quest_updates": quest_updates}
+
+
+# ──────────────────────────────────────────────
+# PATROL ENCOUNTERS
+# ──────────────────────────────────────────────
+
+@app.post("/action/patrol_check/{player_id}")
+async def patrol_check(player_id: str):
+    p_data = await vec_db.get_player(player_id)
+    if not p_data:
+        return {"patrol": False}
+    player = Player(**p_data)
+
+    z_data = await vec_db.get_zone(player.current_zone_id)
+    if not z_data:
+        return {"patrol": False}
+    zone = Zone(**z_data)
+    loc = next((l for l in zone.locations if l.id == player.current_location_id), None)
+    if not loc:
+        return {"patrol": False}
+
+    # No patrol in hub (safe zone with NPCs) or while mobs are already alive here
+    living = [m for m in loc.mobs if m.respawn_at is None and m.hp > 0]
+    if living or loc.npcs:
+        return {"patrol": False}
+
+    # 25% chance per check
+    if random.random() > 0.25:
+        return {"patrol": False}
+
+    # Pick a mob type already present in the zone for thematic consistency
+    zone_mob_names = list({
+        m.name for l in zone.locations for m in l.mobs
+        if not m.is_named and not m.is_elite
+    })
+    if not zone_mob_names:
+        return {"patrol": False}
+
+    mob_name = random.choice(zone_mob_names)
+    lvl = max(1, player.level + random.randint(-1, 1))
+    patrol_mob = Mob(
+        id=f"patrol_{player_id}_{int(time.time())}",
+        name=mob_name,
+        level=lvl,
+        hp=ScalingMath.get_max_hp(lvl),
+        max_hp=ScalingMath.get_max_hp(lvl),
+        damage=ScalingMath.get_damage(lvl),
+        description=f"A {mob_name.lower()} that wandered into the area.",
+        loot_table=[],
+    )
+    loc.mobs.append(patrol_mob)
+    await vec_db.save_zone(zone.id, zone.model_dump(mode='json'))
+
+    return {"patrol": True, "mob_name": mob_name, "mob_level": lvl}
+
+
+# ──────────────────────────────────────────────
 # INVENTORY / EQUIPMENT
 # ──────────────────────────────────────────────
 
@@ -818,7 +917,13 @@ async def talk_to_npc(player_id: str, npc_name: str):
 
     # Resolve the exact quests this NPC is offering
     offered_quests = [q for q in zone.quests if q.id in (npc.quests_offered or [])]
-    not_yet_active = [q for q in offered_quests if not any(aq.id == q.id for aq in player.active_quests)]
+    not_yet_active = [
+        q for q in offered_quests
+        if not any(aq.id == q.id for aq in player.active_quests)
+        and q.id not in player.completed_quest_ids
+        # Don't re-offer explore quests for already-visited locations
+        and not (q.quest_type == "explore" and q.target_id in player.explored_location_ids)
+    ]
 
     # Build a tight quest brief so the NPC dialogue is directly about the actual objectives
     if not_yet_active:

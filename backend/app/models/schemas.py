@@ -51,6 +51,7 @@ class QuestType(str, Enum):
     HUNT = "hunt"
     SPEAK = "speak"
     EXPLORE = "explore"
+    FORAGE = "forage"   # gather resources via the gather command at a specific location
 
 class Quest(BaseModel):
     id: str

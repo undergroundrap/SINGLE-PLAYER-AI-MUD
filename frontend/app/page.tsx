@@ -82,6 +82,9 @@ export default function Home() {
   // Rested XP
   const [restedXp, setRestedXp] = useState<number>(0);
   const [restedXpCap, setRestedXpCap] = useState<number>(0);
+  // Gather (forage quests)
+  const [gatherCooldown, setGatherCooldown] = useState<number>(0); // 0–100 %
+  const [isGathering, setIsGathering] = useState<boolean>(false);
   // Dungeon
   const [dungeonRun, setDungeonRun] = useState<any>(null);
   const [dungeonAttacking, setDungeonAttacking] = useState<boolean>(false);
@@ -124,6 +127,32 @@ export default function Home() {
       return () => clearTimeout(t);
     }
   }, [step]);
+
+  // ── Patrol encounter timer ──────────────────────────────────────────────
+  // Every 45s, check if a wandering enemy has appeared in a non-hub location.
+  useEffect(() => {
+    if (!playerId || step !== 'game' || dungeonRun) return;
+    const interval = setInterval(async () => {
+      if (!playerId) return;
+      const loc = zone?.locations?.find((l: any) => l.id === player?.current_location_id);
+      // Skip hubs (have NPCs) and locations that already have live mobs
+      if (!loc || loc.npcs?.length > 0) return;
+      const nowTs = Date.now() / 1000;
+      const liveMobs = (loc.mobs || []).filter((m: any) => !m.respawn_at || m.respawn_at <= nowTs);
+      if (liveMobs.length > 0) return;
+      try {
+        const res = await fetch(`http://localhost:8000/action/patrol_check/${playerId}`, { method: 'POST' });
+        const data = await res.json();
+        if (data.patrol) {
+          addLog(`⚠ A ${data.mob_name} (Lv ${data.mob_level}) crosses your path!`, "combat");
+          // Refresh zone so the mob appears in the mob list
+          const zRes = await fetch(`http://localhost:8000/zone/${player.current_zone_id}`);
+          if (zRes.ok) setZone(await zRes.json());
+        }
+      } catch { /* silent — patrol check is best-effort */ }
+    }, 45000);
+    return () => clearInterval(interval);
+  }, [playerId, player?.current_location_id, dungeonRun, step]);
 
   // ── Auto-attack loop ────────────────────────────────────────────────────
   // Fires another attack tick automatically after the cooldown expires,
@@ -1366,7 +1395,7 @@ export default function Home() {
         addLog("══════════ COMMANDS ══════════", "system");
         addLog("MOVEMENT  go [north/south/east/west]", "hint");
         addLog("COMBAT    kill [mob] · flee", "hint");
-        addLog("QUESTS    quests · accept [1/all] · turn in", "hint");
+        addLog("QUESTS    quests · accept [1/all] · turn in · gather (forage quests)", "hint");
         addLog("SOCIAL    talk to [npc] · who", "hint");
         addLog("ITEMS     inventory · equip [item] · unequip [slot] · look [item/mob]", "hint");
         addLog("POTIONS   use healing · use elixir  (or click USE in the panel)", "hint");
@@ -2039,6 +2068,48 @@ export default function Home() {
               }
             }
           }
+        }
+
+      } else if (lowerCmd === 'gather' || lowerCmd === 'forage' || lowerCmd === 'search') {
+        if (!playerId) return;
+        if (isGathering) { addLog("Already gathering...", "hint"); return; }
+        setIsGathering(true);
+        try {
+          const res = await fetch(`http://localhost:8000/action/gather/${playerId}`, { method: 'POST' });
+          const data = await res.json();
+          if (data.on_cooldown) {
+            addLog(data.message, "hint");
+          } else if (!data.success) {
+            addLog(data.message, "hint");
+          } else {
+            data.messages?.forEach((msg: string) => addLog(msg, "system"));
+            // Update quest progress
+            if (data.quest_updates?.length) {
+              setPlayer((prev: any) => {
+                if (!prev) return prev;
+                const updatedQuests = prev.active_quests.map((q: any) => {
+                  const upd = data.quest_updates.find((u: any) => u.id === q.id);
+                  return upd ? { ...q, current_progress: upd.progress, is_completed: upd.completed } : q;
+                });
+                return { ...prev, active_quests: updatedQuests };
+              });
+            }
+            // Animate gather cooldown bar (8s)
+            const GATHER_CD = 8000;
+            const start = Date.now();
+            const tick = () => {
+              const elapsed = Date.now() - start;
+              const pct = Math.min(100, (elapsed / GATHER_CD) * 100);
+              setGatherCooldown(pct);
+              if (pct < 100) requestAnimationFrame(tick);
+              else { setGatherCooldown(0); }
+            };
+            requestAnimationFrame(tick);
+          }
+        } catch (err: any) {
+          addLog(`Gather Error: ${err.message}`, "error");
+        } finally {
+          setIsGathering(false);
         }
 
       } else if (lowerCmd === 'flee' || lowerCmd === 'escape' || lowerCmd === 'disengage') {
@@ -2978,6 +3049,30 @@ export default function Home() {
                   }
                   return btns;
                 })}
+
+                {/* GATHER — only shown when a forage quest targets this location */}
+                {(player?.active_quests || []).some((q: any) =>
+                  q.quest_type === 'forage' &&
+                  q.target_id === player?.current_location_id &&
+                  !q.is_completed
+                ) && (
+                  <button
+                    type="button"
+                    className={`tool-button relative overflow-hidden !text-green-400/90 !border-green-900/50 ${isGathering ? 'opacity-60' : ''}`}
+                    disabled={isGathering}
+                    onClick={() => executeCommand('gather')}
+                    title="Forage for resources"
+                  >
+                    {gatherCooldown > 0 && (
+                      <span
+                        className="absolute inset-0 origin-left bg-green-900/30 transition-none"
+                        style={{ transform: `scaleX(${gatherCooldown / 100})` }}
+                      />
+                    )}
+                    <span className="relative">Gather</span>
+                    <span className="keybind-hint">{currentIdx++}</span>
+                  </button>
+                )}
 
                 <button type="button" className="tool-button relative" onClick={() => executeCommand('quests')}>
                   Quests
