@@ -171,15 +171,23 @@ Two-phase approach:
 
 ### Progression Loop
 
-The intended loop mirrors classic MMO structure, with no gear requirements — level gates keep it casual:
+The intended loop mirrors classic MMO tier structure. Each tier requires you to gear through the previous one:
 
 ```
-Level 1–9   → Open world zones (kill quests, gather, hunt, explore)
-Level 10+   → Dungeons unlock (boss chamber, 1.6× loot quality)
-Level 20+   → Raids unlock (hardest content, 2.8× loot quality)
+Open World (level 1–9)   → kill quests, gather, hunt, explore
+Dungeon    (level 10+)   → 5-player instanced, Rare/Epic loot (1.6× stats)
+                           Gear Score gates the Raid — farm dungeons first
+Raid       (level 20+,   → 10-player instanced, Epic/Legendary loot (2.8× stats)
+            GS ≥ 100)      5 rooms, mini-boss + final boss with phase 2 enrage
+                           Clearing a raid pushes open-world zone level +3
+                           → next open-world tier, harder dungeon, harder raid
 ```
 
-The dungeon and raid portal buttons are **always visible in the sidebar from level 1**, but dimmed and locked with the level requirement displayed. Clicking a locked button prints a hint in the chat log. Players always know what they're working toward.
+This creates an infinite compounding loop: Open World → Dungeon → Raid → harder Open World → harder Dungeon → harder Raid → …
+
+**Gear Score** — shown live in the HUD stats panel. Calculated as the sum of all equipped item stat values × rarity multiplier (Common 1×, Rare 2.5×, Epic 4×, Legendary 7×). Raid entry is blocked until GS ≥ 100 with a clear message: *"Gear score too low (74/100). Farm dungeons first."* Once GS ≥ 100 the HUD shows `✓ RAID READY` in purple.
+
+**Raid tier escalation:** Each raid cleared increments `player.raids_cleared`. The zone travel endpoint adds `raids_cleared × 3` to the generated zone level, so open-world content, dungeon mobs, and raid bosses all scale harder with every tier you complete.
 
 **Death penalty:** 15% of current XP lost on death. No gear durability — the XP sting is enough to create tension without frustrating casual players.
 
@@ -245,6 +253,39 @@ damage = random(1, base_damage + weapon_stat_bonus)
 - Equipment stats are summed via `_equipment_bonus(character, stat)`
 - Minimum 1 damage on any hit (no frustrating 0-damage swings)
 - **1.5s server-side rate limit** per player enforced via `_attack_times` dict in `main.py`
+
+### Dungeon & Raid System
+`dungeon_engine.py → generate_run(), resolve_round()`
+
+Dungeons and raids are **instanced** — completely separate from the Zone system. Each run is a `DungeonRun` stored in-memory (`_dungeon_runs` dict) for the duration of the session. No persistence overhead; server restart abandons any active run, which is acceptable for single-player.
+
+**Structure:**
+
+| Type | Rooms | Party | Loot tier | Gate |
+|---|---|---|---|---|
+| Dungeon | 3 (trash → trash+elite → boss) | Player + 4 AI | `dungeon` (1.6×) | Level 10 |
+| Raid | 5 (trash → trash+elite → mini-boss → deeper trash → final boss) | Player + 9 AI | `raid` (2.8×) | Level 20 + GS ≥ 100 |
+
+**Party composition** is role-aware and auto-assigned:
+- Tank player (Warrior, Paladin) → 1 Healer + 3 DPS
+- Healer player (Priest) → 1 Tank + 3 DPS
+- DPS player (everyone else) → 1 Tank + 1 Healer + 2 DPS
+- Raid → 2 Tanks + 2 Healers + 6 DPS (player + 9 NPCs)
+
+**Round resolution** — one `POST /dungeon/attack` resolves the entire round simultaneously:
+1. Player attacks the primary mob (`combat_engine.resolve_tick`)
+2. Each living AI party member acts based on role:
+   - **Healer**: heals the most injured combatant (player or party) if anyone is below 40% HP; else attacks
+   - **Tank**: 75% attack, 25% taunt (reduces mob damage 20% for the round)
+   - **DPS**: attacks, with 20% proc chance using the same `_CLASS_PROCS` table as open-world
+3. All surviving mobs counter-attack a random living combatant (redirected to tank if taunt is active)
+4. Room cleared / run cleared / wipe checks
+
+**Raid boss phase 2 (enrage):** When the final boss drops to ≤30% HP, it enrages once — `boss.damage × 1.4`, flag stored on the run, pulsing red banner shown in the UI. The enrage persists until the boss dies.
+
+**Loot:** On run cleared, `_roll_loot()` is called with `zone_tier="dungeon"` or `"raid"`. Dungeon: 1–2 drops. Raid: 3 guaranteed drops. All items are class-biased toward the player's class using the same slot-weight system as open world.
+
+**Combat theater UI:** Dungeon/raid content replaces the scrolling chat log with a persistent layout — boss HP bar at top, one row per party member that updates in place each round, 3-line rolling log for dramatic moments only. No scroll, no noise.
 
 ### Loot System
 `main.py → _roll_loot(mob_level, loot_table, char_class, zone_tier)`
@@ -401,14 +442,17 @@ Turn-in happens at any hub quest giver NPC via `POST /quests/complete/{player_id
 
 | Model | Key Fields | Notes |
 |---|---|---|
-| `Player` | `level`, `hp/max_hp`, `xp/next_level_xp`, `gold`, `kills`, `deaths`, `inventory: List[Item]`, `equipment: Dict[str, Item]`, `active_quests`, `current_zone_id`, `current_location_id`, `visited_zone_ids: List[str]` | `visited_zone_ids` tracks every zone ID ever generated for this character — used to clean up all their data on per-character delete. Equipment slots: `head chest hands legs feet main_hand off_hand` |
-| `Zone` | `id`, `name`, `locations: List[Location]`, `quests`, `simulated_players`, `time_of_day` (0–1), `weather`, `is_dungeon`, `is_raid` | Zone is the top-level world unit |
+| `Player` | `level`, `hp/max_hp`, `xp/next_level_xp`, `gold`, `kills`, `deaths`, `inventory: List[Item]`, `equipment: Dict[str, Item]`, `active_quests`, `current_zone_id`, `current_location_id`, `visited_zone_ids`, `rested_xp`, `last_logout_time`, `dungeons_cleared`, `raids_cleared` | Equipment slots: `head chest hands legs feet main_hand off_hand`. `raids_cleared` drives open-world zone tier escalation (+3 levels per raid). `active_dungeon_run_id` tracks an in-progress run. |
+| `Zone` | `id`, `name`, `locations: List[Location]`, `quests`, `simulated_players`, `time_of_day` (0–1), `weather`, `is_dungeon`, `is_raid` | Zone is the top-level open-world unit. Instanced dungeons use `DungeonRun`, not `Zone`. |
 | `Location` | `id`, `name`, `description`, `npcs: List[NPC]`, `mobs: List[Mob]`, `exits: Dict[str, str]` | Exits map direction → location_id |
-| `Mob` | `id`, `name`, `level`, `hp/max_hp`, `damage`, `loot_table`, `respawn_at` (Unix ts or None), `is_elite`, `is_named` | `respawn_at = None` means alive |
+| `Mob` | `id`, `name`, `level`, `hp/max_hp`, `damage`, `loot_table`, `respawn_at` (Unix ts or None), `is_elite`, `is_named` | `respawn_at = None` means alive. Reset to `max_hp` and `respawn_at = None` when timer fires. |
 | `NPC` | `id`, `name`, `role` (`quest_giver/vendor/trainer`), `dialogue`, `quests_offered`, `vendor_items` | Vendors have `vendor_items: List[Dict]` with `price` key |
 | `Item` | `id`, `name`, `description`, `level`, `rarity`, `stats: Dict[str, int]`, `slot` | Equipment stats: `armor` or `damage`. Consumables use `slot = "consumable"` with effect encoded in stats: `{"heal_pct": 40}` or `{"xp_bonus_pct": 75, "xp_charges": 5}` |
 | `Quest` | `id`, `title`, `objective`, `quest_type` (`kill/gather/hunt/explore`), `target_id`, `collect_name` (gather quests), `target_count`, `current_progress`, `xp_reward`, `is_completed` | |
 | `SimulatedPlayer` | `id`, `name`, `race`, `char_class`, `current_location_id`, `status` | Background actors — not real players. `current_location_id` resolves to a location name in the `/who` output. |
+| `DungeonRun` | `id`, `player_id`, `dungeon_name`, `dungeon_level`, `is_raid`, `room_index`, `rooms: List[DungeonRoom]`, `party: List[DungeonMember]`, `combat_log`, `status` (`active/cleared/wiped`), `boss_enraged` | Stored in-memory only (`_dungeon_runs` dict). Lost on server restart. |
+| `DungeonRoom` | `index`, `name`, `mobs: List[Mob]`, `cleared` | Rooms 0–2 for dungeons, 0–4 for raids. Room 2 (dungeon) / room 4 (raid) always has a named boss. |
+| `DungeonMember` | `id`, `name`, `char_class`, `role` (`tank/healer/dps`), `hp/max_hp`, `damage`, `last_action`, `is_alive` | AI party member. Stats derived from `ScalingMath` × role multiplier. Uses same `_CLASS_PROCS` table as players. |
 
 ---
 
@@ -420,7 +464,7 @@ All endpoints are in `backend/main.py`. Backend runs on `http://localhost:8000`.
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/players` | List all saved characters as summary cards (name, level, race, class, kills, gold, etc.). Used by the load-game screen. Returns `{players: [...]}` sorted by level desc. |
-| `GET` | `/player/{player_id}` | Load a specific character + their current zone. Returns `{player_id, player, zone}`. Used when continuing from the load screen. |
+| `GET` | `/player/{player_id}` | Load a specific character + their current zone. Returns `{player_id, player, zone, gear_score}`. `gear_score` is computed fresh each load for the HUD indicator. |
 | `DELETE` | `/player/{player_id}` | Delete a single character and all zones in their `visited_zone_ids`. Clears their attack cooldown. Irreversible. |
 | `POST` | `/player/create` | Create character. Params: `name`, `race`, `char_class`, `pronouns`. Returns `{player_id, player, zone}` |
 
@@ -428,7 +472,7 @@ All endpoints are in `backend/main.py`. Backend runs on `http://localhost:8000`.
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/zone/{zone_id}` | Fetch full zone state |
-| `POST` | `/zone/travel/{player_id}` | Generate + travel to new zone. Params: `is_dungeon`, `is_raid` |
+| `POST` | `/zone/travel/{player_id}` | Generate + travel to new **open-world** zone. Params: `is_dungeon` (deprecated — use `/dungeon/enter`), `is_raid`. Zone level = `player.level + (raids_cleared × 3)` — escalates with each raid tier. Requires 2 completed quests in the current zone. |
 
 ### Actions
 | Method | Path | Description |
@@ -458,6 +502,14 @@ All endpoints are in `backend/main.py`. Backend runs on `http://localhost:8000`.
 | `POST` | `/vendor/buy/{player_id}` | Purchase item. Params: `npc_name`, `item_id` |
 | `POST` | `/vendor/sell/{player_id}` | Sell inventory item. Price = `item.level × stat_total × 2`. Param: `item_id` |
 | `POST` | `/vendor/sell_junk/{player_id}` | Sell all Common-rarity non-consumable items at once. Returns `gold_gained`, `sold_count`, `player_gold`. |
+
+### Dungeon / Raid
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/dungeon/enter/{player_id}` | Create an instanced dungeon or raid run. Param: `is_raid` (bool). Gates: lv10/lv20 + GS≥100 for raids. Returns full `DungeonRun`. |
+| `POST` | `/dungeon/attack/{run_id}` | Resolve one full combat round (player + all AI party members + mob counter-attacks). Param: `player_id`. Returns `run`, `round_log`, `room_cleared`, `run_cleared`, `wiped`, `xp_gained`, `gold_gained`, `loot`. |
+| `POST` | `/dungeon/advance/{run_id}` | Move to the next room after the current one is cleared. Param: `player_id`. |
+| `POST` | `/dungeon/flee/{run_id}` | Abandon the run. Clears `player.active_dungeon_run_id`. Param: `player_id`. |
 
 ### Narrative
 | Method | Path | Description |
@@ -636,13 +688,17 @@ Restarting the server resets all attack cooldowns. This is fine for a single-pla
 
 Ideas that fit the design philosophy (frictionless, solo-friendly, endlessly progressive) but are large enough to be their own milestone.
 
-### AI Party Members for Dungeons & Raids
+### AI Party Dialogue & Loot Reactions
 
-When you enter a dungeon or raid, the game assembles a full party of AI companions sized and specced for your class. The composition is role-aware — a Warrior queuing for a dungeon gets two DPS companions and a Healer; a Priest gets two tanks and a DPS. Party members are not generic: they are procedurally named characters with classes, gear, and a level appropriate to the content.
+Party members already act intelligently in combat (role-aware healing, taunts, procs). The next layer is making them *feel* like real companions: contextual one-liners during fights (*"Watch the boss's enrage!"*), celebrating crits, reacting to rare drops (*"Finally, a chest piece upgrade!"* or *"All yours — can't use that."*). This would use a single combined LLM call per round (one line for the most interesting party action) rather than per-member, keeping token usage comparable to the current open-world chat.
 
-Inside the dungeon window, party members contribute DPS each round (logged alongside the player's own hits), use abilities that react to the fight state (a Healer top-offs below 40% HP, a Rogue uses Evasion when the boss enrages), and shout contextual lines in the chat feed — celebrating crits, warning about AOE, calling out a rare drop. After a kill, each member "loots" their share and reacts: *"Finally, a chest piece upgrade!"* or *"Ah, can't use that — all yours."* Loot distribution is smart: if an item drops that is best-in-slot for a companion role they don't fill, it routes to the player automatically.
+### Achievement System
 
-Party state lives in the zone object for the duration of the dungeon and is cleared on exit — no persistence overhead, no save-slot complexity. The heavy lift is prompting the LLM to generate one combined combat-commentary-and-reaction line per round rather than per party member, keeping token usage comparable to the current single-player combat log.
+Persistent milestone tracking — first boss kill, 100 kills in a zone, first Legendary drop, first raid clear — shown as a pop-up banner and stored on the player record. Achievements give small permanent stat bonuses (e.g. +5 max HP for "First Blood") to reward completionist play without gating progression behind them.
+
+### Session Stats Screen
+
+A score-screen shown on zone exit / tab close: kills this session, gold earned, best drop, XP gained, damage dealt. Creates the "just one more run" feeling and gives a natural stopping point. Zero backend changes needed — all data is already tracked in player state.
 
 ---
 
