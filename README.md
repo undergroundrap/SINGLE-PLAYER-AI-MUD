@@ -183,7 +183,19 @@ The dungeon and raid portal buttons are **always visible in the sidebar from lev
 
 **Death penalty:** 15% of current XP lost on death. No gear durability — the XP sting is enough to create tension without frustrating casual players.
 
-**Level-up scaling:** On every level-up, `max_hp` and `damage` are recalculated from `ScalingMath` **and** the class-specific multiplier from `CLASS_STATS` is re-applied. A Warrior's 1.2× HP advantage and a Mage's 1.3× damage advantage persist through every level, not just at character creation.
+**Level-up scaling:** On every level-up, `max_hp` and `damage` are recalculated from `ScalingMath` **and** the class-specific multiplier from `CLASS_STATS` is re-applied. Class advantages persist through every level, not just at character creation.
+
+| Class | HP Mult | Dmg Mult | Identity |
+|---|---|---|---|
+| Warrior | 1.20 | 1.10 | Tanky all-rounder |
+| Paladin | 1.15 | 0.95 | Sustain tank, proc heals |
+| Hunter | 1.00 | 1.10 | Glass cannon, spiky proc |
+| Rogue | 0.90 | 1.20 | Highest damage, dodge survivability |
+| Priest | 0.85 | 0.85 | Squishiest — relies on heal procs |
+| Shaman | 1.10 | 1.05 | Tankier damage dealer, sturdy grinder |
+| Mage | 0.80 | 1.30 | Burst glass cannon |
+| Warlock | 0.85 | 1.20 | High damage, self-sustain via lifesteal |
+| Druid | 1.00 | 1.00 | Generalist, frequent rejuvenation procs |
 
 **Out-of-combat HP regen:** 2% of max HP per second kicks in after 6 seconds without taking damage. The frontend regen timer syncs the new HP to the backend (`POST /action/rest/{player_id}`) every ~10 seconds — reconnecting or refreshing restores the regened HP rather than snapping back to the last combat value.
 
