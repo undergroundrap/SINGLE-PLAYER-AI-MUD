@@ -140,23 +140,30 @@ _NAMED_TEMPLATES = [
 
 
 def _make_loot_table(mob_level: int, is_elite: bool = False, is_named: bool = False) -> list:
+    # The loot loop checks entries in order and returns the first rarity that passes its
+    # chance roll. Entries MUST be ordered best-to-worst so that rare items are checked
+    # first — if Common were checked first at 100% it would block all higher rarities.
     if is_named:
+        # Named bosses: guaranteed Rare minimum, real shot at Legendary
         return [
+            {"chance": 0.10, "rarity": "Legendary", "stat_mult": RARITY["LEGENDARY"]},
+            {"chance": 0.40, "rarity": "Epic",       "stat_mult": RARITY["EPIC"]},
             {"chance": 1.00, "rarity": "Rare",       "stat_mult": RARITY["RARE"]},
-            {"chance": 0.40, "rarity": "Epic",        "stat_mult": RARITY["EPIC"]},
-            {"chance": 0.10, "rarity": "Legendary",   "stat_mult": RARITY["LEGENDARY"]},
         ]
     if is_elite:
+        # Elites: usually Uncommon, real shot at Rare, small Epic chance
         return [
+            {"chance": 0.08, "rarity": "Epic",     "stat_mult": RARITY["EPIC"]},
+            {"chance": 0.35, "rarity": "Rare",      "stat_mult": RARITY["RARE"]},
             {"chance": 0.80, "rarity": "Uncommon",  "stat_mult": RARITY["UNCOMMON"]},
-            {"chance": 0.35, "rarity": "Rare",       "stat_mult": RARITY["RARE"]},
-            {"chance": 0.08, "rarity": "Epic",       "stat_mult": RARITY["EPIC"]},
         ]
+    # Normal mobs: best rarity checked first so tier boosts (dungeon/raid) improve
+    # quality instead of inflating Common to 100% and blocking everything else.
     return [
-        {"chance": 0.40, "rarity": "Common",   "stat_mult": RARITY["COMMON"]},
+        {"chance": 0.02, "rarity": "Epic",     "stat_mult": RARITY["EPIC"]},
+        {"chance": 0.08, "rarity": "Rare",      "stat_mult": RARITY["RARE"]},
         {"chance": 0.20, "rarity": "Uncommon",  "stat_mult": RARITY["UNCOMMON"]},
-        {"chance": 0.08, "rarity": "Rare",       "stat_mult": RARITY["RARE"]},
-        {"chance": 0.02, "rarity": "Epic",       "stat_mult": RARITY["EPIC"]},
+        {"chance": 0.40, "rarity": "Common",    "stat_mult": RARITY["COMMON"]},
     ]
 
 
