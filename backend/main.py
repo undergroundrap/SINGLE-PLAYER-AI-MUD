@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.models.schemas import Player, Zone, Mob, Item, Location, Quest, DungeonRun
-from app.core.world_generator import world_gen
+from app.core.world_generator import world_gen, _roll_loot
 from app.core.scaling_math import ScalingMath, RARITY
 from app.core.vector_db import vec_db
 from app.core.combat_engine import combat_engine
@@ -111,109 +111,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# ──────────────────────────────────────────────
-# LOOT SYSTEM
-# ──────────────────────────────────────────────
-
-_ITEM_NAMES: dict[str, list[str]] = {
-    "head":      ["Hood", "Helm", "Cap", "Crown", "Coif"],
-    "chest":     ["Tunic", "Chestplate", "Robe", "Hauberk", "Vest"],
-    "hands":     ["Gloves", "Gauntlets", "Wraps", "Grips", "Handguards"],
-    "legs":      ["Leggings", "Greaves", "Trousers", "Chausses", "Kilt"],
-    "feet":      ["Boots", "Sandals", "Treads", "Sabatons", "Walkers"],
-    "main_hand": ["Sword", "Blade", "Axe", "Staff", "Dagger", "Mace", "Glaive"],
-    "off_hand":  ["Shield", "Buckler", "Tome", "Orb", "Quiver"],
-}
-
-# Class-specific weapon/off-hand names — overrides generic pool
-_CLASS_WEAPONS: dict[str, dict[str, list[str]]] = {
-    "Warrior":  {"main_hand": ["Sword", "Axe", "Greatsword", "Mace", "Cleaver"],  "off_hand": ["Shield", "Buckler"]},
-    "Paladin":  {"main_hand": ["Sword", "Mace", "Hammer", "Blade"],                "off_hand": ["Shield", "Holy Bulwark"]},
-    "Hunter":   {"main_hand": ["Glaive", "Dagger", "Axe", "Blade"],               "off_hand": ["Quiver", "Dagger"]},
-    "Rogue":    {"main_hand": ["Dagger", "Blade", "Shiv", "Fang"],                 "off_hand": ["Dagger", "Shiv", "Blade"]},
-    "Priest":   {"main_hand": ["Staff", "Mace", "Wand"],                           "off_hand": ["Tome", "Orb", "Idol"]},
-    "Shaman":   {"main_hand": ["Mace", "Axe", "Staff", "Totem"],                   "off_hand": ["Shield", "Idol", "Tome"]},
-    "Mage":     {"main_hand": ["Staff", "Wand", "Rod"],                            "off_hand": ["Tome", "Orb", "Focus"]},
-    "Warlock":  {"main_hand": ["Staff", "Wand", "Scepter"],                        "off_hand": ["Grimoire", "Orb", "Tome"]},
-    "Druid":    {"main_hand": ["Staff", "Mace", "Claw"],                           "off_hand": ["Idol", "Tome", "Shield"]},
-}
-
-# Slot weights per class — higher = more likely to drop that slot
-_CLASS_SLOT_WEIGHTS: dict[str, dict[str, int]] = {
-    "Warrior":  {"main_hand": 5, "chest": 4, "head": 3, "legs": 3, "feet": 2, "hands": 2, "off_hand": 2},
-    "Paladin":  {"main_hand": 4, "off_hand": 4, "chest": 3, "head": 2, "legs": 2, "feet": 2, "hands": 2},
-    "Hunter":   {"main_hand": 5, "legs": 3, "chest": 3, "head": 2, "feet": 3, "hands": 2, "off_hand": 1},
-    "Rogue":    {"main_hand": 6, "hands": 3, "chest": 2, "legs": 2, "head": 2, "feet": 3, "off_hand": 1},
-    "Priest":   {"main_hand": 3, "off_hand": 5, "head": 3, "chest": 2, "legs": 2, "feet": 1, "hands": 1},
-    "Shaman":   {"main_hand": 4, "off_hand": 3, "chest": 3, "head": 2, "legs": 2, "feet": 2, "hands": 2},
-    "Mage":     {"main_hand": 4, "off_hand": 5, "head": 3, "chest": 2, "legs": 2, "feet": 1, "hands": 1},
-    "Warlock":  {"main_hand": 3, "off_hand": 5, "head": 3, "chest": 2, "legs": 2, "feet": 1, "hands": 2},
-    "Druid":    {"main_hand": 4, "off_hand": 3, "chest": 3, "head": 2, "legs": 2, "feet": 2, "hands": 2},
-}
-
-# Class-appropriate adjectives for flavour
-_CLASS_ADJECTIVES: dict[str, list[str]] = {
-    "Warrior":  ["Forged", "Iron", "Heavy", "Dented", "Savage", "Ancient", "Tempered"],
-    "Paladin":  ["Holy", "Sacred", "Gilded", "Blessed", "Shining", "Consecrated", "Divine"],
-    "Hunter":   ["Swift", "Worn", "Scarred", "Bone", "Tattered", "Crude", "Marked"],
-    "Rogue":    ["Shadow", "Venom", "Silent", "Cursed", "Tainted", "Void", "Serrated"],
-    "Priest":   ["Holy", "Spectral", "Runed", "Blessed", "Pale", "Sacred", "Sanctified"],
-    "Shaman":   ["Totem", "Primal", "Runed", "Storm", "Bone", "Ancient", "Earthen"],
-    "Mage":     ["Arcane", "Runed", "Mystic", "Spectral", "Frost", "Void", "Glowing"],
-    "Warlock":  ["Cursed", "Vile", "Shadow", "Demonic", "Tainted", "Dark", "Fel"],
-    "Druid":    ["Wild", "Ancient", "Bark", "Primal", "Mossy", "Earthen", "Verdant"],
-}
-
-_DEFAULT_ADJECTIVES = ["Worn", "Crude", "Forged", "Ancient", "Cursed", "Shadow", "Iron", "Bone", "Runed", "Tainted"]
-
-def _weighted_slot(char_class: str) -> str:
-    """Pick a slot biased toward the character's class."""
-    weights = _CLASS_SLOT_WEIGHTS.get(char_class, {})
-    slots = list(_ITEM_NAMES.keys())
-    w = [weights.get(s, 2) for s in slots]
-    return random.choices(slots, weights=w, k=1)[0]
-
-def _roll_loot(mob_level: int, loot_table: list, char_class: str = "", zone_tier: str = "open") -> Item | None:
-    """Roll loot biased toward the player's class. Returns None on no drop.
-    zone_tier: 'open' | 'dungeon' | 'raid' — dungeons and raids boost drop chances."""
-    # Loot quality multiplier per content tier
-    _TIER_BOOST = {"open": 1.0, "dungeon": 1.6, "raid": 2.8}
-    boost = _TIER_BOOST.get(zone_tier, 1.0)
-
-    base_entries = loot_table or [
-        {"chance": 0.40, "rarity": "Common",   "stat_mult": RARITY["COMMON"]},
-        {"chance": 0.20, "rarity": "Uncommon",  "stat_mult": RARITY["UNCOMMON"]},
-        {"chance": 0.08, "rarity": "Rare",       "stat_mult": RARITY["RARE"]},
-        {"chance": 0.02, "rarity": "Epic",       "stat_mult": RARITY["EPIC"]},
-    ]
-    entries = [{**e, "chance": min(1.0, e["chance"] * boost)} for e in base_entries]
-
-    for entry in entries:
-        if random.random() < entry["chance"]:
-            slot  = _weighted_slot(char_class) if char_class else random.choice(list(_ITEM_NAMES.keys()))
-            stat  = "damage" if slot in ("main_hand", "off_hand") else "armor"
-
-            # Use class-specific weapon/offhand names if available
-            class_names = _CLASS_WEAPONS.get(char_class, {})
-            name_pool = class_names.get(slot) if slot in ("main_hand", "off_hand") else None
-            item_name = random.choice(name_pool or _ITEM_NAMES[slot])
-
-            adj_pool  = _CLASS_ADJECTIVES.get(char_class, _DEFAULT_ADJECTIVES)
-            adjective = random.choice(adj_pool)
-            value     = max(1, int(mob_level * entry["stat_mult"]))
-            rarity    = entry["rarity"]
-            return Item(
-                id=f"item_{mob_level}_{int(time.time())}_{random.randint(100, 999)}",
-                name=f"{adjective} {item_name}",
-                description=f"Dropped by a level {mob_level} creature. {rarity} quality.",
-                level=mob_level,
-                rarity=rarity,
-                stats={stat: value},
-                slot=slot,
-            )
-    return None
-
 
 def _apply_levelups(player: Player, messages: list) -> bool:
     """Loop level-ups until XP is below threshold. Returns True if leveled."""
