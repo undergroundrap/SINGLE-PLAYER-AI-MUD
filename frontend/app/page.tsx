@@ -99,7 +99,8 @@ export default function Home() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const seenEntities = useRef<Set<string>>(new Set());
-  const isInCombatRef = useRef(false); // kept in sync with autoAttackTarget — reserved for future use
+  const isInCombatRef = useRef(false); // kept in sync with autoAttackTarget
+  const idleChatAbortRef = useRef<AbortController | null>(null); // aborted on mob kill to free LM Studio
   const chatMsgCountRef = useRef(0);
   const idleChatRef = useRef<{ zone: any; player: any; globalChat: any[] }>({ zone: null, player: null, globalChat: [] });
   const lastRegenSyncRef = useRef<number>(0); // timestamp of last HP sync to backend
@@ -383,7 +384,10 @@ export default function Home() {
           time_of_day: timeStr,
           sim_player_names: simNames,
         });
-        const res = await fetch(`http://localhost:8000/narrative/world_chat?${params}`, { method: 'POST' });
+        const abortCtrl = new AbortController();
+        idleChatAbortRef.current = abortCtrl;
+        const res = await fetch(`http://localhost:8000/narrative/world_chat?${params}`, { method: 'POST', signal: abortCtrl.signal });
+        idleChatAbortRef.current = null;
         if (!res.ok) return;
         const data = await res.json();
         if (!data.name || !data.text) return;
@@ -404,7 +408,7 @@ export default function Home() {
           });
         };
         addIdle({ name: data.name, text: data.text });
-      } catch { /* silent */ }
+      } catch (e: any) { if (e?.name !== 'AbortError') console.warn('idle chat error', e); }
     }, 30000 + Math.random() * 30000);
     return () => clearInterval(interval);
   }, [step]);
@@ -1865,6 +1869,9 @@ export default function Home() {
                 const restedTag = data.rested_bonus > 0 ? ` 💤(+${data.rested_bonus} rested)` : '';
                 const killLine = `${nameplate ? nameplate + ' ' : ''}${data.target_name} slain. +${data.xp_gained} XP${restedTag}${data.gold_gained ? ` +${data.gold_gained}g` : ''}`;
                 addLog(killLine, "system");
+                // Abort any in-flight idle chat so LM Studio can start the death description immediately
+                idleChatAbortRef.current?.abort();
+                idleChatAbortRef.current = null;
                 describeEntity(data.target_name, { isElite: data.target_is_elite, isNamed: data.target_is_named, isDeath: true });
 
                 // Stop auto-attack & clear target
