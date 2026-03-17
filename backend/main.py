@@ -528,10 +528,13 @@ async def attack(player_id: str, mob_name: str):
     loc = next((l for l in zone.locations if l.id == player.current_location_id), None)
 
     # ── Find a living mob ──────────────────────
-    target_mob = next(
-        (m for m in (loc.mobs if loc else [])
-         if mob_name.lower() in m.name.lower() and (m.respawn_at is None or now >= m.respawn_at)),
-        None
+    # Prefer exact name match so "attack Boar" never accidentally targets
+    # "Veteran Boar". Fall back to substring only if no exact match exists.
+    living = [m for m in (loc.mobs if loc else [])
+              if (m.respawn_at is None or now >= m.respawn_at)]
+    target_mob = (
+        next((m for m in living if m.name.lower() == mob_name.lower()), None)
+        or next((m for m in living if mob_name.lower() in m.name.lower()), None)
     )
     if not target_mob:
         dead_mob = next(
