@@ -1888,6 +1888,9 @@ export default function Home() {
                 return {
                   ...prev,
                   ...hpUpdate,
+                  max_hp:    data.player_max_hp ?? prev.max_hp,
+                  level:     data.player_level  ?? prev.level,
+                  damage:    data.player_damage  ?? prev.damage,
                   xp:        data.player_xp ?? (prev.xp + (data.xp_gained || 0)),
                   gold:      data.player_gold ?? (prev.gold || 0) + (data.gold_gained || 0),
                   kills:     data.player_kills ?? (prev.kills || 0),

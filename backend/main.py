@@ -650,6 +650,9 @@ async def attack(player_id: str, mob_name: str):
         "auto_equipped":        auto_equipped,
         "displaced_item":       displaced_item.model_dump(mode='json') if displaced_item else None,
         "leveled_up":           leveled_up,
+        "player_level":         player.level,
+        "player_max_hp":        player.max_hp,
+        "player_damage":        player.damage,
         "player_gold":          player.gold,
         "player_kills":         player.kills,
         # Return gear score whenever equipment or level changes so UI stays in sync
