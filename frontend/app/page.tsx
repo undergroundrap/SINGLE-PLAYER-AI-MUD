@@ -35,7 +35,9 @@ const CLASS_FLAVOR: Record<string, string> = {
 // Returns the new progress value if this quest is tracked by the kill, otherwise null.
 const GATHER_SUFFIX_RE = / (trophy|tusk|fang|pelt|wing|tail|hide|scale|stinger|ear|bone|finger|claw|horn|core|essence|shard|crystal|badge)$/i;
 function questNewProgress(q: any, targetName: string, targetIsNamed: boolean): number | null {
-  const mob = q.target_id.toLowerCase().includes(targetName.toLowerCase());
+  // targetName must CONTAIN the quest target (e.g. "Veteran Cave Bat" contains "Cave Bat")
+  // NOT the reverse — otherwise killing "Bat" would wrongly credit a "Cave Bat" quest
+  const mob = targetName.toLowerCase().includes(q.target_id.toLowerCase());
   const gatherBase = q.quest_type === 'gather'
     ? q.target_id.toLowerCase().replace(GATHER_SUFFIX_RE, '').trim()
     : null;
@@ -129,30 +131,26 @@ export default function Home() {
   }, [step]);
 
   // ── Patrol encounter timer ──────────────────────────────────────────────
-  // Every 45s, check if a wandering enemy has appeared in a non-hub location.
+  // Every 45s, ask the backend if a wandering enemy has appeared.
+  // Backend owns all location/hub/mob checks — no stale zone/player state here.
   useEffect(() => {
     if (!playerId || step !== 'game' || dungeonRun) return;
     const interval = setInterval(async () => {
-      if (!playerId) return;
-      const loc = zone?.locations?.find((l: any) => l.id === player?.current_location_id);
-      // Skip hubs (have NPCs) and locations that already have live mobs
-      if (!loc || loc.npcs?.length > 0) return;
-      const nowTs = Date.now() / 1000;
-      const liveMobs = (loc.mobs || []).filter((m: any) => !m.respawn_at || m.respawn_at <= nowTs);
-      if (liveMobs.length > 0) return;
       try {
         const res = await fetch(`http://localhost:8000/action/patrol_check/${playerId}`, { method: 'POST' });
         const data = await res.json();
         if (data.patrol) {
           addLog(`⚠ A ${data.mob_name} (Lv ${data.mob_level}) crosses your path!`, "combat");
-          // Refresh zone so the mob appears in the mob list
-          const zRes = await fetch(`http://localhost:8000/zone/${player.current_zone_id}`);
-          if (zRes.ok) setZone(await zRes.json());
+          // Refresh zone using zone_id returned by backend (avoids stale player closure)
+          if (data.zone_id) {
+            const zRes = await fetch(`http://localhost:8000/zone/${data.zone_id}`);
+            if (zRes.ok) setZone(await zRes.json());
+          }
         }
       } catch { /* silent — patrol check is best-effort */ }
     }, 45000);
     return () => clearInterval(interval);
-  }, [playerId, player?.current_location_id, dungeonRun, step]);
+  }, [playerId, step, dungeonRun]);
 
   // ── Auto-attack loop ────────────────────────────────────────────────────
   // Fires another attack tick automatically after the cooldown expires,

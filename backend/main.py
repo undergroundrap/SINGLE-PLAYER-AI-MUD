@@ -358,6 +358,22 @@ async def move_player(player_id: str, location_id: str):
             q.is_completed = True
             explore_completed.append({"id": q.id, "title": q.title, "xp_reward": q.xp_reward})
 
+    # Reset alive mobs at the destination to full HP.
+    # Mobs that were partially damaged before the player left now recover, matching
+    # standard MMO out-of-combat regen. Dead mobs (respawn_at set) are untouched.
+    z_data = await vec_db.get_zone(player.current_zone_id)
+    zone_changed = False
+    if z_data:
+        zone = Zone(**z_data)
+        dest_loc = next((l for l in zone.locations if l.id == location_id), None)
+        if dest_loc:
+            for m in dest_loc.mobs:
+                if m.respawn_at is None and m.hp < m.max_hp:
+                    m.hp = m.max_hp
+                    zone_changed = True
+        if zone_changed:
+            await vec_db.save_zone(zone.id, zone.model_dump(mode='json'))
+
     await vec_db.save_player(player_id, player.model_dump(mode='json'))
     sim_engine.mark_player_zone(player.current_zone_id)
     return {"success": True, "location_id": location_id, "explore_completed": explore_completed}
@@ -719,7 +735,7 @@ async def patrol_check(player_id: str):
     loc.mobs.append(patrol_mob)
     await vec_db.save_zone(zone.id, zone.model_dump(mode='json'))
 
-    return {"patrol": True, "mob_name": mob_name, "mob_level": lvl}
+    return {"patrol": True, "mob_name": mob_name, "mob_level": lvl, "zone_id": zone.id}
 
 
 # ──────────────────────────────────────────────
