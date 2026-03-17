@@ -1888,9 +1888,10 @@ export default function Home() {
                 return {
                   ...prev,
                   ...hpUpdate,
-                  max_hp:    data.player_max_hp ?? prev.max_hp,
-                  level:     data.player_level  ?? prev.level,
-                  damage:    data.player_damage  ?? prev.damage,
+                  max_hp:         data.player_max_hp        ?? prev.max_hp,
+                  level:          data.player_level         ?? prev.level,
+                  damage:         data.player_damage        ?? prev.damage,
+                  next_level_xp:  data.player_next_level_xp ?? prev.next_level_xp,
                   xp:        data.player_xp ?? (prev.xp + (data.xp_gained || 0)),
                   gold:      data.player_gold ?? (prev.gold || 0) + (data.gold_gained || 0),
                   kills:     data.player_kills ?? (prev.kills || 0),
@@ -2158,8 +2159,10 @@ export default function Home() {
                       : prev.equipment;
                     return {
                       ...prev,
-                      xp: data.new_xp,
-                      level: data.new_level,
+                      xp:            data.new_xp,
+                      level:         data.new_level,
+                      next_level_xp: data.new_next_level_xp ?? prev.next_level_xp,
+                      max_hp:        data.new_max_hp        ?? prev.max_hp,
                       active_quests: remaining,
                       completed_quest_ids: newCompleted,
                       inventory: updatedInv,

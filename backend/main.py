@@ -336,6 +336,8 @@ async def complete_quest(player_id: str, quest_id: str):
         "leveled_up":     leveled,
         "new_level":      player.level,
         "new_xp":         player.xp,
+        "new_next_level_xp": player.next_level_xp,
+        "new_max_hp":     player.max_hp,
         "item_reward":    item_reward.model_dump(mode='json') if item_reward else None,
         "item_placement": item_placement,   # frontend uses this to update state correctly
         "equipped_slot":  equipped_slot,
@@ -653,6 +655,7 @@ async def attack(player_id: str, mob_name: str):
         "player_level":         player.level,
         "player_max_hp":        player.max_hp,
         "player_damage":        player.damage,
+        "player_next_level_xp": player.next_level_xp,
         "player_gold":          player.gold,
         "player_kills":         player.kills,
         # Return gear score whenever equipment or level changes so UI stays in sync
