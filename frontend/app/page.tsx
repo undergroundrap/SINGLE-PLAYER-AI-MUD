@@ -2451,8 +2451,6 @@ export default function Home() {
               </div>
 
               <div className="pb-12">
-                <div className="panel-header header-bags">POTIONS</div>
-                <div style={{ height: '32px', width: '100%' }} />
                 <div>{renderPotions()}</div>
               </div>
 

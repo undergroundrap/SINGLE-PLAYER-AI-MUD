@@ -34,7 +34,7 @@ Every class has a unique **auto-firing passive proc** that triggers mid-combat w
 
 | Layer | Technology | Purpose |
 |---|---|---|
-| Frontend | Next.js 14 (App Router) | React SSR + client state |
+| Frontend | Next.js 16 (App Router) | React SSR + client state |
 | Frontend | TypeScript | Type safety across all UI logic |
 | Frontend | Tailwind CSS + globals.css | Dark terminal aesthetic, component styles |
 | Backend | FastAPI + Uvicorn | Async Python HTTP API |
