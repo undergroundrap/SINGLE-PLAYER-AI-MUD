@@ -723,6 +723,20 @@ async def unequip_item(player_id: str, slot: str):
     return {"success": True, "unequipped": item.model_dump(mode='json'), "slot": slot}
 
 
+@app.post("/action/rest/{player_id}")
+async def rest_player(player_id: str, hp: int):
+    """Persist out-of-combat HP regen from the client.
+    Called by the frontend regen timer every ~10 seconds while the player is healing.
+    Clamps HP to [1, max_hp] server-side so the client can never over-heal."""
+    p_data = await vec_db.get_player(player_id)
+    if not p_data:
+        raise HTTPException(status_code=404, detail="Player not found")
+    player = Player(**p_data)
+    player.hp = max(1, min(player.max_hp, hp))
+    await vec_db.save_player(player_id, player.model_dump(mode='json'))
+    return {"success": True, "hp": player.hp, "max_hp": player.max_hp}
+
+
 # ──────────────────────────────────────────────
 # NPC DIALOGUE
 # ──────────────────────────────────────────────

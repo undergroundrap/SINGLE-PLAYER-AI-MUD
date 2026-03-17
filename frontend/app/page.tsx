@@ -73,6 +73,7 @@ export default function Home() {
   const seenEntities = useRef<Set<string>>(new Set());
   const chatMsgCountRef = useRef(0);
   const idleChatRef = useRef<{ zone: any; player: any; globalChat: any[] }>({ zone: null, player: null, globalChat: [] });
+  const lastRegenSyncRef = useRef<number>(0); // timestamp of last HP sync to backend
 
   const ATTACK_COOLDOWN_MS = 1600; // slightly above backend 1.5s to avoid false cooldown hits
 
@@ -136,6 +137,7 @@ export default function Home() {
 
   // ── Out-of-combat HP regeneration ──────────────────────────────────────
   // 2 % max HP per second once 6s have passed since last hit.
+  // Syncs new HP to the backend every 10 s so reconnecting restores correct HP.
   useEffect(() => {
     if (step !== 'game' || !player) return;
     const regen = setInterval(() => {
@@ -144,7 +146,14 @@ export default function Home() {
       setPlayer((prev: any) => {
         if (!prev || prev.hp >= prev.max_hp) return prev;
         const tick = Math.max(1, Math.floor(prev.max_hp * 0.02));
-        return { ...prev, hp: Math.min(prev.max_hp, prev.hp + tick) };
+        const newHp = Math.min(prev.max_hp, prev.hp + tick);
+        // Persist to backend every ~10 s — fire-and-forget, regen is best-effort
+        const now = Date.now();
+        if (playerId && now - lastRegenSyncRef.current >= 10_000) {
+          lastRegenSyncRef.current = now;
+          fetch(`http://localhost:8000/action/rest/${playerId}?hp=${newHp}`, { method: 'POST' }).catch(() => {});
+        }
+        return { ...prev, hp: newHp };
       });
     }, 1000);
     return () => clearInterval(regen);
