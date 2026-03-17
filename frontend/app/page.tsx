@@ -2145,16 +2145,26 @@ export default function Home() {
                     if (allCleared) {
                       setTimeout(() => addLog("━━ Zone cleared! Type 'travel' or use the portal to move on. ━━", "system"), 100);
                     }
+                    // item_placement tells us where the item ended up: inventory | equipped | dropped
+                    const placement = data.item_placement;
+                    const updatedInv = placement === 'inventory' && data.item_reward
+                      ? [...prev.inventory, data.item_reward]
+                      : prev.inventory;
+                    const updatedEquip = placement === 'equipped' && data.item_reward && data.equipped_slot
+                      ? { ...prev.equipment, [data.equipped_slot]: data.item_reward }
+                      : prev.equipment;
                     return {
                       ...prev,
                       xp: data.new_xp,
                       level: data.new_level,
                       active_quests: remaining,
                       completed_quest_ids: newCompleted,
-                      inventory: data.item_reward ? [...prev.inventory, data.item_reward] : prev.inventory,
+                      inventory: updatedInv,
+                      equipment: updatedEquip,
                     };
                   });
-                  if (data.item_reward) {
+                  if (data.gear_score != null) setGearScore(data.gear_score);
+                  if (data.item_reward && data.item_placement !== 'dropped') {
                     setActiveLoot(data.item_reward);
                     setTimeout(() => setActiveLoot(null), 5000);
                   }
@@ -2355,7 +2365,10 @@ export default function Home() {
         }
 
       } else if (lowerCmd === 'sell junk' || lowerCmd === 'sell all') {
-        if (!playerId) { addLog("Character not found.", "error"); }
+        const sjLoc = zone?.locations?.find((l: any) => l.id === player?.current_location_id);
+        if (!sjLoc?.npcs?.some((n: any) => n.role === 'vendor')) {
+          addLog("No merchant here to sell to.", "error");
+        } else if (!playerId) { addLog("Character not found.", "error"); }
         else {
           try {
             const res = await fetch(`http://localhost:8000/vendor/sell_junk/${playerId}`, { method: 'POST' });

@@ -301,10 +301,13 @@ async def complete_quest(player_id: str, quest_id: str):
     player.xp += quest.xp_reward
 
     item_reward = None
+    item_placement = None  # "inventory" | "equipped" | "dropped" | None
+    equipped_slot  = None
     if quest.item_reward:
         item_reward = Item(**quest.item_reward) if isinstance(quest.item_reward, dict) else quest.item_reward
         if len(player.inventory) < BAG_SIZE:
             player.inventory.append(item_reward)
+            item_placement = "inventory"
             messages.append(f"Item Reward: {item_reward.name}")
         else:
             # Bags full — auto-equip if it's an upgrade, otherwise warn
@@ -313,8 +316,11 @@ async def complete_quest(player_id: str, quest_id: str):
             new_sum = sum(item_reward.stats.values()) if item_reward.stats else 0
             if item_reward.slot and new_sum > curr_sum:
                 player.equipment[item_reward.slot] = item_reward
+                item_placement = "equipped"
+                equipped_slot  = item_reward.slot
                 messages.append(f"Item Reward: {item_reward.name} (auto-equipped — bags were full)")
             else:
+                item_placement = "dropped"
                 messages.append(f"⚠ Bags full — [{item_reward.name}] left on the ground! Sell junk first.")
 
     leveled = _apply_levelups(player, messages)
@@ -324,13 +330,16 @@ async def complete_quest(player_id: str, quest_id: str):
 
     await vec_db.save_player(player_id, player.model_dump(mode='json'))
     return {
-        "success": True,
-        "messages": messages,
-        "xp_reward": quest.xp_reward,
-        "leveled_up": leveled,
-        "new_level": player.level,
-        "new_xp": player.xp,
-        "item_reward": item_reward.model_dump(mode='json') if item_reward else None,
+        "success":        True,
+        "messages":       messages,
+        "xp_reward":      quest.xp_reward,
+        "leveled_up":     leveled,
+        "new_level":      player.level,
+        "new_xp":         player.xp,
+        "item_reward":    item_reward.model_dump(mode='json') if item_reward else None,
+        "item_placement": item_placement,   # frontend uses this to update state correctly
+        "equipped_slot":  equipped_slot,
+        "gear_score":     calculate_gear_score(player) if (leveled or item_placement == "equipped") else None,
     }
 
 
