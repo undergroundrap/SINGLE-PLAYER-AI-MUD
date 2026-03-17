@@ -564,6 +564,7 @@ async def attack(player_id: str, mob_name: str):
 
     xp_gained    = 0
     gold_gained  = 0
+    rested_bonus = 0
     loot_item    = None
     auto_equipped = False
     displaced_item = None
@@ -577,7 +578,6 @@ async def attack(player_id: str, mob_name: str):
         xp_gained = xp_base * xp_mult
 
         # Apply rested XP bonus (2× while pool lasts)
-        rested_bonus = 0
         if player.rested_xp > 0:
             rested_bonus = min(xp_gained, player.rested_xp)
             xp_gained   += rested_bonus
