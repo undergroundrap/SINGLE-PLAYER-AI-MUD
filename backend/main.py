@@ -1631,12 +1631,16 @@ async def dungeon_attack(run_id: str, player_id: str):
 
     return {
         **result,
-        "player_hp":    player.hp,
-        "player_max_hp": player.max_hp,
-        "player_xp":    player.xp,
-        "player_gold":  player.gold,
-        "player_level": player.level,
-        "player_inventory": [i.model_dump(mode='json') for i in player.inventory],
+        "player_hp":           player.hp,
+        "player_max_hp":       player.max_hp,
+        "player_xp":           player.xp,
+        "player_gold":         player.gold,
+        "player_level":        player.level,
+        "player_damage":       player.damage,
+        "player_next_level_xp": player.next_level_xp,
+        "player_raids_cleared":    player.raids_cleared,
+        "player_dungeons_cleared": player.dungeons_cleared,
+        "player_inventory":    [i.model_dump(mode='json') for i in player.inventory],
     }
 
 

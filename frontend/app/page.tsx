@@ -896,9 +896,16 @@ export default function Home() {
                   setDungeonRun(data.run);
                   setPlayer((prev: any) => prev ? {
                     ...prev,
-                    hp: data.player_hp, max_hp: data.player_max_hp,
-                    xp: data.player_xp, gold: data.player_gold,
-                    level: data.player_level, inventory: data.player_inventory ?? prev.inventory,
+                    hp:            data.player_hp,
+                    max_hp:        data.player_max_hp,
+                    xp:            data.player_xp,
+                    gold:          data.player_gold,
+                    level:         data.player_level,
+                    damage:        data.player_damage        ?? prev.damage,
+                    next_level_xp: data.player_next_level_xp ?? prev.next_level_xp,
+                    raids_cleared:    data.player_raids_cleared    ?? prev.raids_cleared,
+                    dungeons_cleared: data.player_dungeons_cleared ?? prev.dungeons_cleared,
+                    inventory:     data.player_inventory ?? prev.inventory,
                   } : prev);
                   if (data.loot?.length) {
                     data.loot.forEach((item: any) => {
@@ -1286,7 +1293,7 @@ export default function Home() {
             addLog(`[${i + 1}] ${p.name}`, "hint");
             addLog(`    ${p.race} ${p.char_class}  ·  Level ${p.level}  ·  ${p.pronouns}`, "hint");
             addLog(`    HP ${p.hp}/${p.max_hp}  ·  Gold ${p.gold}g  ·  Kills ${p.kills}  ·  Deaths ${p.deaths}`, "hint");
-            addLog(`    Quests completed: ${p.completed_quest_ids}`, "hint");
+            addLog(`    Quests completed: ${p.completed_quest_ids?.length ?? 0}  ·  Dungeons: ${p.dungeons_cleared ?? 0}  ·  Raids: ${p.raids_cleared ?? 0}`, "hint");
           });
           addLog("────────────────────────────────────────", "system");
           addLog("[new] — Start a new character", "hint");
