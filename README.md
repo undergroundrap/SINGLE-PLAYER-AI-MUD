@@ -906,4 +906,85 @@ The sim as it exists today is already ~80% of the way there technically. The gap
 
 ---
 
+## Steam / Electron Distribution (Future)
+
+The intended distribution path is an **Electron wrapper on Steam** — the game ships as a standalone desktop app with no external server dependency. The AI world chat gimmick requires a local LLM, so the bundle needs to include a model and a way to run it.
+
+### Architecture
+
+```
+Electron shell
+  ├── Next.js frontend     (bundled as static files, served by Electron)
+  ├── FastAPI backend       (spawned as a child process on app launch)
+  ├── Python runtime        (bundled via PyInstaller — no Python install required)
+  └── LM Studio / llama.cpp (bundled inference engine + Qwen3.5 9B model weights)
+```
+
+The Electron main process becomes the orchestrator: on launch it starts the FastAPI backend subprocess and the inference engine subprocess, waits for both to be healthy (poll `http://localhost:8000/docs` and `http://localhost:1234/v1/models`), then opens the game window pointing at the local Next.js build.
+
+### Bundling the Python backend
+
+Use **PyInstaller** to produce a single-folder executable from the FastAPI app:
+```bash
+pip install pyinstaller
+pyinstaller --onedir backend/main.py --name mud-server \
+    --add-data "backend/app:app" \
+    --hidden-import uvicorn.lifespan.on
+```
+The resulting `dist/mud-server/` folder (or `.exe` on Windows) gets included in the Electron `resources/` directory. Electron spawns it on startup and kills it on quit via `app.on('before-quit')`.
+
+### Bundling the LLM
+
+Two options for the inference engine:
+
+| Option | Pros | Cons |
+|---|---|---|
+| **Bundle LM Studio** | Familiar, has a GUI for settings, supports many backends | Large binary (~200 MB), not headless-friendly |
+| **Bundle llama.cpp server** | Tiny binary (~10 MB), fully headless, OpenAI-compatible API on port 1234, same interface the game already uses | No GUI — thinking mode must be disabled via a launch flag |
+
+**Recommended: llama.cpp server** (`llama-server` binary). It exposes the same OpenAI-compatible REST API at `http://localhost:1234/v1` that the game already targets, so zero backend changes needed. Thinking mode is disabled at launch via `--no-context-shift` or a sampler flag — not a user setting.
+
+**Qwen3.5 9B** is the target model. At Q4_K_M quantisation it is ~5.5 GB — acceptable for a Steam game download. Include the `.gguf` file in `resources/models/`.
+
+Launch command Electron would run:
+```bash
+llama-server \
+  --model resources/models/qwen3.5-9b-q4_k_m.gguf \
+  --port 1234 \
+  --ctx-size 4096 \
+  --n-predict 256 \
+  --no-mmap \
+  --thinking false        # disables <think> blocks — Qwen3.5 specific flag
+```
+
+### First-run onboarding
+
+On first launch (detected by absence of `mud.db`), show an onboarding screen before the title:
+
+1. **Hardware check** — detect VRAM via `nvidia-smi` or Metal API and recommend quality level:
+   - ≥ 8 GB VRAM → full Q4_K_M (best quality)
+   - 4–8 GB VRAM → Q3_K_M (slightly lower quality, same feel)
+   - CPU only → Q2_K or redirect to a smaller model (Qwen3.5 3B)
+2. **Model download** — if not bundled, offer to download the `.gguf` from HuggingFace with a progress bar. (Alternatively, bundle it in the Steam depot so it downloads during installation — preferred for a smooth experience.)
+3. **Quick test** — fire a single `/describe/entity` call with a test prompt. Show the response in the onboarding screen so the player sees AI output before the game starts. If it fails, show a clear fallback message: *"AI unavailable — the game works fully without it, but world chat and NPC descriptions will use template responses."*
+
+### Steam-specific notes
+
+- Ship as a **Steam Play** title (Windows + Linux via Proton). macOS is a separate build due to Metal/MPS differences with llama.cpp.
+- The `backend/data/mud.db` save file should live in `%APPDATA%/SinglePlayerAIMUD/` (Windows) or `~/.local/share/SinglePlayerAIMUD/` (Linux) — not inside the install directory, which Steam may overwrite on update.
+- Admin endpoints (`/admin/boost`, `/admin/reset`) are localhost-only and not exposed externally — fine for a bundled app. No auth needed.
+- The **Reset** button in-game already handles save wipes cleanly (`POST /admin/reset`) — no separate uninstaller logic needed for save data.
+
+### Key files to create when starting this work
+
+| File | Purpose |
+|---|---|
+| `electron/main.js` | Electron entry — spawns backend + llama-server, opens window |
+| `electron/preload.js` | Context bridge if any native APIs needed |
+| `scripts/build_backend.sh` | PyInstaller build step |
+| `scripts/build_electron.sh` | Full packaging pipeline |
+| `electron-builder.yml` | Electron Builder config — platform targets, Steam appid, resource paths |
+
+---
+
 *Built by Ocean Bennett*
