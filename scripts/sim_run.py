@@ -659,19 +659,7 @@ while dungeon_count < MAX_DUNGEONS:
         log("--quick: stopping after first dungeon run", DIM)
         break
 
-    # Do a few open world sweeps between dungeons to gain levels + gold
-    p, gs = fresh_player(pid)
-    if p.get("level", 1) < RAID_LEVEL_GATE:
-        log(f"  Need level {RAID_LEVEL_GATE} — doing 2 open world sweeps…", DIM)
-        for _ in range(2):
-            kills = do_zone_sweep(pid, zone_id, hub_loc_id, vendor_name)
-            move(pid, hub_loc_id)
-            do_hub_routine(pid, zone_id, vendor_name)
-            if kills == 0:
-                respawn_waits += 1
-                time.sleep(15)
-            else:
-                respawn_waits = 0
+    # Re-queue dungeon immediately — open world is done, dungeons are the progression loop
 
 if dungeon_count >= MAX_DUNGEONS:
     warn(f"Hit dungeon cap ({MAX_DUNGEONS}) — GS may not be scaling correctly")
