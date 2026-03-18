@@ -122,11 +122,16 @@ SINGLE-PLAYER-AI-MUD/
             │
             ├── scaling_math.py   ← Pure math. get_max_hp(level), get_damage(level),
             │                       get_xp_required(level). Tune numbers here.
-            │                       Also: RARITY dict (stat multipliers per rarity tier).
+            │                       Also: CLASS_STATS (hp/dmg multipliers per class),
+            │                       RARITY dict (stat multipliers per rarity tier),
+            │                       apply_levelups(player, messages) — shared level-up
+            │                       loop used by both main.py and dungeon_engine.py.
             │
             ├── simulation.py     ← Background asyncio loop (10s tick). Handles:
             │                       - Mob respawn (respawn_at timer expiry)
             │                       - SimulatedPlayer movement and status changes
+            │                         (battling status: actually kills a mob at their
+            │                          location and posts a world_message)
             │                       - Weather shifts (5% chance per tick)
             │                       - Time-of-day progression
             │                       - AI-generated zone ambiance messages (10% chance)
@@ -176,17 +181,22 @@ The intended loop mirrors classic MMO tier structure. Each tier requires you to 
 
 ```
 Open World (level 1–9)   → kill quests, gather, hunt, explore, forage
+                           Quests are repeatable — grind until level 10
 Dungeon    (level 10+)   → 5-player instanced, Rare/Epic loot (1.6× stats)
                            Gear Score gates the Raid — farm dungeons first
 Raid       (level 20+,   → 10-player instanced, Epic/Legendary loot (2.8× stats)
             GS ≥ 100)      5 rooms, mini-boss + final boss with phase 2 enrage
                            Clearing a raid pushes open-world zone level +3
-                           → next open-world tier, harder dungeon, harder raid
+Zone Travel              → Requires 2 completed quests AND GS ≥ zone_max_level × 25
+                           Cannot travel on open-world drops alone — must do dungeons + raids
+                           "★ ZONE CLEARED!" fires only when travel succeeds (real milestone)
 ```
 
-This creates an infinite compounding loop: Open World → Dungeon → Raid → harder Open World → harder Dungeon → harder Raid → …
+This creates an infinite compounding loop: Open World → Dungeon → Raid → meet GS threshold → travel → harder Open World → harder Dungeon → harder Raid → …
 
 **Gear Score** — shown live in the HUD stats panel. Calculated as the sum of all equipped item stat values × rarity multiplier (Common 1×, Rare 2.5×, Epic 4×, Legendary 7×). Raid entry is blocked until GS ≥ 100 with a clear message: *"Gear score too low (74/100). Farm dungeons first."* Once GS ≥ 100 the HUD shows `✓ RAID READY` in purple.
+
+**Zone travel GS gate** — `zone_max_level × 25` GS required to advance. For a level [1–5] zone: 125 GS required. Common-only drops top out around 35 GS total; reaching the threshold requires Rare/Epic gear from dungeons and raids. The scrolling ticker always shows current GS vs required so the player knows exactly what to farm.
 
 **Raid tier escalation:** Each raid cleared increments `player.raids_cleared`. The zone travel endpoint adds `raids_cleared × 3` to the generated zone level, so open-world content, dungeon mobs, and raid bosses all scale harder with every tier you complete.
 
@@ -409,6 +419,19 @@ Every encounter and location transition triggers a short AI-generated descriptio
 
 All four description types fall back silently if the AI is unavailable — no error is shown, the static game text is simply not supplemented.
 
+### Scrolling Ticker (Loop Guidance)
+
+The top-of-screen ticker scrolls 6 information slots continuously. The last two are dynamically driven by the player's exact loop stage:
+
+| Stage | Progress slot | Next Step slot |
+|---|---|---|
+| Level 1–9 | `GS: 12 — LEVEL 4 / 10 NEEDED FOR DUNGEONS` | `GRIND QUESTS → REACH LEVEL 10 → ENTER DUNGEONS` |
+| Level 10–19 | `GS: 85 / 125 REQUIRED — LEVEL 14 / 20 NEEDED FOR RAIDS` | `RUN DUNGEONS → BUILD GEAR SCORE → UNLOCK RAIDS AT LEVEL 20` |
+| Level 20+, GS below threshold | `GS: 110 / 125 REQUIRED TO ADVANCE` | `FARM RAIDS FOR EPIC GEAR → HIT 125 GS → TYPE 'TRAVEL'` |
+| GS threshold met | `✓ GS: 130 / 125 — ZONE COMPLETE` | `ZONE CLEARED — TYPE 'TRAVEL' TO ADVANCE` |
+
+This means a brand-new player always knows what to do next without reading a guide. The ticker is the tutorial.
+
 ### Minimap
 
 The minimap radar (top of the right panel) shows live entity state for your current location:
@@ -439,7 +462,9 @@ Quests live on the Zone (`zone.quests`) and are accepted into `player.active_que
 - **explore:** auto-completes server-side in `POST /action/move` when `location_id == quest.target_id`; backend returns `explore_completed` array in the move response. **Once visited, explore quests for that location are never re-offered.**
 - **forage:** completed by using the `gather` command (or clicking GATHER) while standing in `quest.target_id` location. Backend endpoint `/action/gather` with 8 s cooldown. Progress increments once per gather action. Completely separate from mob-kill gather quests — no crossover.
 
-Turn-in happens at any hub quest giver NPC via `POST /quests/complete/{player_id}`, which awards XP and optionally an item reward. When the final quest in a zone is turned in, the frontend logs a zone-clear message and the travel portal becomes available.
+**Quests are repeatable.** All quest types can be re-accepted after completion — quests are grind content, not one-time story beats. NPCs always re-offer completed quests as long as they aren't currently active.
+
+Turn-in happens at any hub quest giver NPC via `POST /quests/complete/{player_id}`, which awards XP and optionally an item reward. Zone travel is **not** unlocked by quest completion — it requires both 2 completed quests (engagement gate) and the gear score threshold (see Progression Loop above). `"★ ZONE CLEARED!"` fires only when travel actually succeeds.
 
 ---
 
@@ -478,7 +503,7 @@ All endpoints are in `backend/main.py`. Backend runs on `http://localhost:8000`.
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/zone/{zone_id}` | Fetch full zone state |
-| `POST` | `/zone/travel/{player_id}` | Generate + travel to new **open-world** zone. Params: `is_dungeon` (deprecated — use `/dungeon/enter`), `is_raid`. Zone level = `player.level + (raids_cleared × 3)` — escalates with each raid tier. Requires 2 completed quests in the current zone. |
+| `POST` | `/zone/travel/{player_id}` | Generate + travel to new **open-world** zone. Params: `is_dungeon` (deprecated — use `/dungeon/enter`), `is_raid`. Zone level = `player.level + (raids_cleared × 3)` — escalates with each raid tier. Requires: (1) 2 completed quests in current zone, (2) GS ≥ `zone_max_level × 25`. |
 
 ### Actions
 | Method | Path | Description |
