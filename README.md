@@ -163,7 +163,7 @@ Two-phase approach:
 - **Phase 1 (Math):** Deterministic skeleton — zone ID, hub + 4 POI locations, 3–4 distinct mob names, 5 quest skeletons covering all 4 archetypes, XP values from `ScalingMath`
 - **Phase 2 (AI):** Calls LM Studio for names, descriptions, NPC dialogue, quest flavor text. Falls back to a hardcoded gritty-fantasy dictionary if AI is unavailable
 - Each hub gets **2 quest giver NPCs** (quests split between them) + a vendor NPC
-- Mobs spawn with a 20% elite chance and 5% named chance per slot (`_make_mobs`)
+- Mobs spawn with a 20% elite chance and 5% named chance per slot (`_make_mobs`). Multipliers **ramp by level** so low-level content stays fair: elites are 1.3× HP / 1.1× dmg at level 1, scaling to the full 2.0× / 1.3× by level 10; named mobs start at 1.6× / 1.15× and reach the full 3.0× / 1.5× by level 10.
 - **Path topology:** Between every hub and POI a path location is inserted — `hub → path_0 → poi_0`, `hub → path_1 → poi_1`, etc. Paths are wired bidirectionally. Path locations have no mobs, no NPCs, and a `resources` field: `[plant_name, fish_species]` drawn from level-appropriate tables (e.g. `["Ironweed", "Silverscale"]`). Patrol spawns skip path locations entirely.
 - **Dungeons:** the final POI is always a boss chamber (`force_boss=True`) — guaranteed named boss + elite guards, location labeled `[BOSS]`
 - **Starter zones (level ≤5):** 5 distinct hand-crafted templates (Whispering Glade, Moonshaded Glade, Saltcliff Reach, The Ashen Fields, Barrowmoor) — picked randomly so players rarely see the same start twice
@@ -613,6 +613,12 @@ All endpoints are in `backend/main.py`. Backend runs on `http://localhost:8000`.
 | `POST` | `/dungeon/advance/{run_id}` | Move to the next room after the current one is cleared. Param: `player_id`. |
 | `POST` | `/dungeon/flee/{run_id}` | Abandon the run. Clears `player.active_dungeon_run_id`. Param: `player_id`. |
 
+### Admin / Dev Tools
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/admin/reset` | Wipe all persisted game data (players + zones). Full clean slate — no server restart needed. Dev/testing only. |
+| `POST` | `/admin/boost/{player_id}` | **Dev/sim only.** Instantly set the player to `level` (default 10) with class-appropriate stats, Uncommon gear in every slot, and 500g. Bypasses the open-world grind. Param: `level` (1–100). Returns `{level, hp, damage, gear_score, gold}`. Used by `sim_run.py --skip-to-dungeon`. |
+
 ### Narrative
 | Method | Path | Description |
 |---|---|---|
@@ -724,6 +730,11 @@ python ..\scripts\sim_run.py
 
 # Quick smoke check — one sweep + one dungeon, then stop
 python ..\scripts\sim_run.py --quick
+
+# Skip Phase 1 entirely — instantly boost to level 10 with Uncommon gear
+# (calls POST /admin/boost) then jump straight to the dungeon loop
+# Saves ~10 min of open-world grind when testing dungeons/raids specifically
+python ..\scripts\sim_run.py --skip-to-dungeon
 
 # Keep the character after the run for manual inspection in-browser
 python ..\scripts\sim_run.py --no-cleanup
@@ -851,7 +862,7 @@ Standard `dict()` or `.model_dump()` without `mode='json'` will leave Python `En
 If you add a required field to a Pydantic model, existing JSON blobs in the DB won't have it. Pydantic will raise a `ValidationError` when loading old records. Clear the DB after significant model changes (`python scripts/reset_data.py` or delete the file).
 
 **Frontend state is a local mirror, not the source of truth.**
-The backend DB is authoritative. The frontend applies optimistic updates (local HP/XP changes) from attack response deltas. For full sync, the zone is polled every 5s via the ticker. If you notice desync, check that the backend is saving state and the ticker is running.
+The backend DB is authoritative. The frontend applies optimistic updates (local HP/XP changes) from attack response deltas. For full sync, the zone is polled every 10s via the ticker. If you notice desync, check that the backend is saving state and the ticker is running.
 
 **Simulation loop only ticks zones in the in-memory cache.**
 `simulation.py` iterates `vec_db._zone_cache.keys()`. A zone is only cached after it's first loaded in a request. Zones that have never been loaded won't be simulated. This is intentional — there's no need to simulate zones no one is in.
