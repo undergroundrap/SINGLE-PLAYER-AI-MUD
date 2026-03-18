@@ -412,10 +412,10 @@ async def travel_to_zone(player_id: str, is_dungeon: bool = False, is_raid: bool
                 detail=f"Complete at least 2 quests before moving on. ({zone_quests_done}/2 done)"
             )
         # Gear score gate — requires raid-level gear (~2-3 successful raids worth)
-        # Formula: player.level * 25 scales correctly with the leveling bracket.
-        # At level 20 (zone travel point): 500 GS — needs ~2 raids with Epic drops.
+        # Formula: player.level * 50 — at level 20 = 1000 GS.
+        # Requires ~2-3 raid clears with Epic/Legendary drops before zone travel.
         current_gs  = calculate_gear_score(player)
-        required_gs = player.level * 25
+        required_gs = player.level * 50
         if current_gs < required_gs:
             raise HTTPException(
                 status_code=400,

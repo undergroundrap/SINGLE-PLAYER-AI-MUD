@@ -186,11 +186,14 @@ The intended loop mirrors classic MMO tier structure. Each tier requires you to 
 Open World (level 1–9)   → kill quests, gather, hunt, explore, forage
                            Quests are repeatable — grind until level 10
 Dungeon    (level 10+)   → 5-player instanced, Rare/Epic loot (1.6× stats)
+                           4 rooms: trash → corridor → trash+elite → boss
                            Gear Score gates the Raid — farm dungeons first
 Raid       (level 20+,   → 10-player instanced, Epic/Legendary loot (2.8× stats)
-            GS ≥ 100)      5 rooms, mini-boss + final boss with phase 2 enrage
+            GS ≥ 100)      7 rooms: trash → corridor → trash+elite → mini-boss
+                                    → corridor → deep trash → final boss (enrage at 30%)
                            Clearing a raid pushes open-world zone level +3
-Zone Travel              → Requires 2 completed quests AND GS ≥ zone_max_level × 25
+Zone Travel              → Requires 2 completed quests AND GS ≥ player.level × 50
+                           At level 20 = 1000 GS required (~2-3 raid clears with Epics)
                            Cannot travel on open-world drops alone — must do dungeons + raids
                            "★ ZONE CLEARED!" fires only when travel succeeds (real milestone)
 ```
@@ -199,7 +202,7 @@ This creates an infinite compounding loop: Open World → Dungeon → Raid → m
 
 **Gear Score** — shown live in the HUD stats panel. Calculated as the sum of all equipped item stat values × rarity multiplier (Common 1×, Rare 2.5×, Epic 4×, Legendary 7×). Raid entry is blocked until GS ≥ 100 with a clear message: *"Gear score too low (74/100). Farm dungeons first."* Once GS ≥ 100 the HUD shows `✓ RAID READY` in purple.
 
-**Zone travel GS gate** — `zone_max_level × 25` GS required to advance. For a level [1–5] zone: 125 GS required. Common-only drops top out around 35 GS total; reaching the threshold requires Rare/Epic gear from dungeons and raids. The scrolling ticker always shows current GS vs required so the player knows exactly what to farm.
+**Zone travel GS gate** — `player.level × 50` GS required to advance. At level 20 (the first zone travel point) = 1000 GS. Dungeon grinding alone tops out around 500–600 GS — raids are required. The scrolling ticker always shows current GS vs required so the player knows exactly what to farm.
 
 **Raid tier escalation:** Each raid cleared increments `player.raids_cleared`. The zone travel endpoint adds `raids_cleared × 3` to the generated zone level, so open-world content, dungeon mobs, and raid bosses all scale harder with every tier you complete.
 
@@ -277,8 +280,8 @@ Dungeons and raids are **instanced** — completely separate from the Zone syste
 
 | Type | Rooms | Party | Loot tier | Gate |
 |---|---|---|---|---|
-| Dungeon | 3 (trash → trash+elite → boss) | Player + 4 AI | `dungeon` (1.6×) | Level 10 |
-| Raid | 5 (trash → trash+elite → mini-boss → deeper trash → final boss) | Player + 9 AI | `raid` (2.8×) | Level 20 + GS ≥ 100 |
+| Dungeon | 4 (trash → corridor → trash+elite → boss) | Player + 4 AI | `dungeon` (1.6×) | Level 10 |
+| Raid | 7 (trash → corridor → trash+elite → mini-boss → corridor → deep trash → final boss) | Player + 9 AI | `raid` (2.8×) | Level 20 + GS ≥ 100 |
 
 **Party composition** is role-aware and auto-assigned:
 - Tank player (Warrior, Paladin) → 1 Healer + 3 DPS
@@ -297,7 +300,7 @@ Dungeons and raids are **instanced** — completely separate from the Zone syste
 
 **Raid boss phase 2 (enrage):** When the final boss drops to ≤30% HP, it enrages once — `boss.damage × 1.4`, flag stored on the run, pulsing red banner shown in the UI. The enrage persists until the boss dies.
 
-**Loot:** On run cleared, `_roll_loot()` is called with `zone_tier="dungeon"` or `"raid"`. Dungeon: 1–2 drops. Raid: 3 guaranteed drops. All items are class-biased toward the player's class using the same slot-weight system as open world.
+**Loot:** On run cleared, `_roll_loot()` is called with `zone_tier="dungeon"` or `"raid"`. Dungeon: 1–2 drops (Epic base rate 15%, boosted by ×1.6 tier = 24% effective). Raid: 3 guaranteed drops. Loot is auto-equipped on drop if the stat total beats the currently equipped piece — old piece goes to inventory. All items are class-biased toward the player's class using the same slot-weight system as open world.
 
 **Combat theater UI:** Dungeon/raid content replaces the scrolling chat log with a persistent layout — boss HP bar at top, one row per party member that updates in place each round, 3-line rolling log for dramatic moments only. No scroll, no noise.
 
@@ -549,7 +552,7 @@ Turn-in happens at any hub quest giver NPC via `POST /quests/complete/{player_id
 | `Quest` | `id`, `title`, `objective`, `quest_type` (`kill/gather/hunt/explore/forage`), `target_id`, `collect_name` (gather/forage quests), `target_count`, `current_progress`, `xp_reward`, `is_completed` | `forage` quests use `target_id` as a location ID (same as `explore`); progress via `/action/gather` not mob kills. |
 | `SimulatedPlayer` | `id`, `name`, `race`, `char_class`, `current_location_id`, `status` | Background actors — not real players. `current_location_id` resolves to a location name in the `/who` output. |
 | `DungeonRun` | `id`, `player_id`, `dungeon_name`, `dungeon_level`, `is_raid`, `room_index`, `rooms: List[DungeonRoom]`, `party: List[DungeonMember]`, `combat_log`, `status` (`active/cleared/wiped`), `boss_enraged` | Stored in-memory only (`_dungeon_runs` dict). Lost on server restart. |
-| `DungeonRoom` | `index`, `name`, `mobs: List[Mob]`, `cleared` | Rooms 0–2 for dungeons, 0–4 for raids. Room 2 (dungeon) / room 4 (raid) always has a named boss. |
+| `DungeonRoom` | `index`, `name`, `mobs: List[Mob]`, `cleared` | Rooms 0–3 for dungeons (room 3 = boss), 0–6 for raids (room 6 = final boss). Corridor rooms have 1–2 light mobs. |
 | `DungeonMember` | `id`, `name`, `char_class`, `role` (`tank/healer/dps`), `hp/max_hp`, `damage`, `last_action`, `is_alive` | AI party member. Stats derived from `ScalingMath` × role multiplier. Uses same `_CLASS_PROCS` table as players. |
 
 ---
@@ -570,7 +573,7 @@ All endpoints are in `backend/main.py`. Backend runs on `http://localhost:8000`.
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/zone/{zone_id}` | Fetch full zone state |
-| `POST` | `/zone/travel/{player_id}` | Generate + travel to new **open-world** zone. Params: `is_dungeon` (deprecated — use `/dungeon/enter`), `is_raid`. Zone level = `player.level + (raids_cleared × 3)` — escalates with each raid tier. Requires: (1) 2 completed quests in current zone, (2) GS ≥ `zone_max_level × 25`. |
+| `POST` | `/zone/travel/{player_id}` | Generate + travel to new **open-world** zone. Params: `is_dungeon` (deprecated — use `/dungeon/enter`), `is_raid`. Zone level = `player.level + (raids_cleared × 3)` — escalates with each raid tier. Requires: (1) 2 completed quests in current zone, (2) GS ≥ `player.level × 50` (= 1000 at level 20). |
 
 ### Actions
 | Method | Path | Description |
@@ -705,7 +708,7 @@ Because the sim calls the exact same backend endpoints as the browser, it **is**
 | Phase | Goal | Stops when |
 |---|---|---|
 | Open world | Kill quests, harvest/fish, forage, level up | Level 10 reached |
-| Dungeon loop | Alternate dungeon runs + open world sweeps | GS ≥ 100 AND level 20 |
+| Dungeon loop | Dungeon runs back-to-back (no open world sweeps) | GS ≥ 100 AND level 20 |
 | Raid loop | Run raids, attempt zone travel after each clear | Zone travel succeeds |
 
 **Use the sim for:**

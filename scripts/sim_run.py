@@ -439,7 +439,7 @@ def do_dungeon_run(pid: str, is_raid: bool = False) -> bool:
 
     run    = r.json()
     run_id = run["id"]
-    total  = 5 if run.get("is_raid") else 3
+    total  = 7 if run.get("is_raid") else 4
     log(f"  Entered: {run['dungeon_name']}  lv{run['dungeon_level']}  "
         f"party: {len(run['party'])}", G)
     log(f"  Party: " + ", ".join(f"{m['name']} [{m['role']}]" for m in run["party"]), DIM)
