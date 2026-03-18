@@ -88,7 +88,9 @@ export default function Home() {
   const [restedXp, setRestedXp] = useState<number>(0);
   const [restedXpCap, setRestedXpCap] = useState<number>(0);
   // Gather (forage quests)
-  const [gatherCooldown, setGatherCooldown] = useState<number>(0); // 0–100 % — used only for text label
+  const [gatherCooldown, setGatherCooldown] = useState<number>(0);   // 0–100 % — used only for text label
+  const [harvestCooldown, setHarvestCooldown] = useState<number>(0); // 0–100 %
+  const [fishCooldown, setFishCooldown] = useState<number>(0);       // 0–100 %
   const [isGathering, setIsGathering] = useState<boolean>(false);
   const [isHarvesting, setIsHarvesting] = useState<boolean>(false);
   const [isFishing, setIsFishing] = useState<boolean>(false);
@@ -669,10 +671,12 @@ export default function Home() {
       return makeResourceFrame('Gathering Resources', s, gatherBarRef, 'linear-gradient(to right, #a07800, #ffe033)', 'rgba(255,200,0,0.5)', '#7a5c00');
     }
     if (isHarvesting) {
-      return makeResourceFrame('Harvesting Plants', '8.0', harvestBarRef, 'linear-gradient(to right, #2d7a2d, #6de06d)', 'rgba(80,200,80,0.5)', '#2d6b2d');
+      const s = Math.max(0, ((100 - harvestCooldown) / 100) * 8).toFixed(1);
+      return makeResourceFrame('Harvesting Plants', s, harvestBarRef, 'linear-gradient(to right, #2d7a2d, #6de06d)', 'rgba(80,200,80,0.5)', '#2d6b2d');
     }
     if (isFishing) {
-      return makeResourceFrame('Fishing', '12.0', fishBarRef, 'linear-gradient(to right, #1a4a7a, #4ab8e0)', 'rgba(74,184,224,0.5)', '#1a4a7a');
+      const s = Math.max(0, ((100 - fishCooldown) / 100) * 12).toFixed(1);
+      return makeResourceFrame('Fishing', s, fishBarRef, 'linear-gradient(to right, #1a4a7a, #4ab8e0)', 'rgba(74,184,224,0.5)', '#1a4a7a');
     }
     if (!target) return null;
     return (
@@ -2422,12 +2426,14 @@ export default function Home() {
             if (!data.success) { addLog(data.message, data.interrupted ? "error" : "hint"); return; }
             addLog(data.message, "system");
             if (data.item) setPlayer((prev: any) => prev ? { ...prev, inventory: [...(prev.inventory || []), data.item] } : prev);
+            addLog(`Harvesting... (${HARVEST_CD / 1000}s)`, "hint");
             await new Promise<void>(resolve => {
               const start = Date.now();
               const tick = () => {
                 const pct = Math.min(100, ((Date.now() - start) / HARVEST_CD) * 100);
                 if (harvestBarRef.current) harvestBarRef.current.style.width = `${pct}%`;
-                if (pct < 100) requestAnimationFrame(tick); else resolve();
+                setHarvestCooldown(pct);
+                if (pct < 100) requestAnimationFrame(tick); else { setHarvestCooldown(0); resolve(); }
               };
               requestAnimationFrame(tick);
             });
@@ -2435,6 +2441,7 @@ export default function Home() {
             addLog(`Harvest error: ${err.message}`, "error");
           } finally {
             setIsHarvesting(false);
+            setHarvestCooldown(0);
             if (harvestBarRef.current) harvestBarRef.current.style.width = '0%';
           }
         })();
@@ -2451,12 +2458,14 @@ export default function Home() {
             if (!data.success) { addLog(data.message, "hint"); return; }
             addLog(data.message, "system");
             if (data.item) setPlayer((prev: any) => prev ? { ...prev, inventory: [...(prev.inventory || []), data.item] } : prev);
+            addLog(`Fishing... (${FISH_CD / 1000}s)`, "hint");
             await new Promise<void>(resolve => {
               const start = Date.now();
               const tick = () => {
                 const pct = Math.min(100, ((Date.now() - start) / FISH_CD) * 100);
                 if (fishBarRef.current) fishBarRef.current.style.width = `${pct}%`;
-                if (pct < 100) requestAnimationFrame(tick); else resolve();
+                setFishCooldown(pct);
+                if (pct < 100) requestAnimationFrame(tick); else { setFishCooldown(0); resolve(); }
               };
               requestAnimationFrame(tick);
             });
@@ -2464,6 +2473,7 @@ export default function Home() {
             addLog(`Fishing error: ${err.message}`, "error");
           } finally {
             setIsFishing(false);
+            setFishCooldown(0);
             if (fishBarRef.current) fishBarRef.current.style.width = '0%';
           }
         })();
