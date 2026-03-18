@@ -2846,21 +2846,27 @@ export default function Home() {
                         )}
                         {/* Dungeon — always visible, locked until level 10 */}
                         <div
-                          className={`action-item font-bold ${player?.level >= 10 ? 'text-purple-400 cursor-pointer' : 'text-white/20 cursor-not-allowed'}`}
-                          onClick={() => player?.level >= 10
-                            ? executeCommand('travel dungeon')
-                            : addLog('⚑ Dungeon unlocks at Level 10. Keep grinding.', 'hint')}
+                          className={`action-item font-bold ${!dungeonRun && player?.level >= 10 ? 'text-purple-400 cursor-pointer' : 'text-white/20 cursor-not-allowed'}`}
+                          onClick={() => {
+                            if (dungeonRun) { addLog('Already in a dungeon. Flee first.', 'hint'); return; }
+                            player?.level >= 10
+                              ? executeCommand('travel dungeon')
+                              : addLog('⚑ Dungeon unlocks at Level 10. Keep grinding.', 'hint');
+                          }}
                         >
-                          ⚑ {player?.level >= 10 ? '[enter dungeon]' : `[dungeon — lv.10 required]`}
+                          ⚑ {dungeonRun ? '[inside dungeon]' : player?.level >= 10 ? '[enter dungeon]' : `[dungeon — lv.10 required]`}
                         </div>
                         {/* Raid — always visible, locked until level 20 */}
                         <div
-                          className={`action-item font-bold ${player?.level >= 20 ? 'text-red-400 cursor-pointer' : 'text-white/20 cursor-not-allowed'}`}
-                          onClick={() => player?.level >= 20
-                            ? executeCommand('travel raid')
-                            : addLog('☠ Raid unlocks at Level 20. Clear dungeons first.', 'hint')}
+                          className={`action-item font-bold ${!dungeonRun && player?.level >= 20 ? 'text-red-400 cursor-pointer' : 'text-white/20 cursor-not-allowed'}`}
+                          onClick={() => {
+                            if (dungeonRun) { addLog('Already in a dungeon. Flee first.', 'hint'); return; }
+                            player?.level >= 20
+                              ? executeCommand('travel raid')
+                              : addLog('☠ Raid unlocks at Level 20. Clear dungeons first.', 'hint');
+                          }}
                         >
-                          ☠ {player?.level >= 20 ? '[enter raid]' : `[raid — lv.20 required]`}
+                          ☠ {dungeonRun ? '[inside dungeon]' : player?.level >= 20 ? '[enter raid]' : `[raid — lv.20 required]`}
                         </div>
                       </>
                     );

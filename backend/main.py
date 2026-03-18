@@ -1577,6 +1577,11 @@ async def dungeon_enter(player_id: str, is_raid: bool = False):
         raise HTTPException(status_code=404, detail="Player not found.")
     player = Player(**p_data)
 
+    # Prevent entering a new run while one is already active
+    if player.active_dungeon_run_id and player.active_dungeon_run_id in _dungeon_runs:
+        raise HTTPException(status_code=400,
+            detail="Already in a dungeon run. Flee or complete it first.")
+
     min_level = 20 if is_raid else 10
     if player.level < min_level:
         raise HTTPException(status_code=400,
