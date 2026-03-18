@@ -266,7 +266,8 @@ defender_roll = random(1, target.level × 8 + armor × 3)
 hit = attacker_roll > defender_roll
 damage = random(1, base_damage + weapon_stat_bonus)
 ```
-- One tick = player attacks mob → class proc fires → (if mob alive and no dodge) mob counter-attacks
+- One tick = player attacks mob → class proc fires → (if mob alive and no dodge) mob counter-attacks → (if mob still alive) check telegraph queue
+- **Open-world telegraphs:** after the mob counter-attacks, named mobs have a 20% chance and elite mobs a 15% chance to queue a telegraph for the next round — see the Telegraph section in Dungeon & Raid System for full details
 - Equipment stats are summed via `_equipment_bonus(character, stat)`
 - Minimum 1 damage on any hit (no frustrating 0-damage swings)
 - **1.5s server-side rate limit** per player enforced via `_attack_times` dict in `main.py`
@@ -300,15 +301,25 @@ Dungeons and raids are **instanced** — completely separate from the Zone syste
 
 **Raid boss phase 2 (enrage):** When the final boss drops to ≤30% HP, it enrages once — `boss.damage × 1.4`, flag stored on the run, pulsing red banner shown in the UI. The enrage persists until the boss dies.
 
-**Telegraph (Dodge) Mechanic** — bosses and elite mobs have a chance each round to telegraph a powerful attack. When a telegraph fires, the backend sets `pending_telegraph` on the `DungeonRun` and adds a `⚠ winds up [Name]! DODGE!` line to the round log. The frontend swaps the ATTACK button for a flashing **DODGE** button with a draining countdown bar. The player has 3 seconds to click — if they miss the window, the next attack resolves the telegraph hit automatically.
+**Telegraph (Dodge) Mechanic** — named and elite mobs telegraph powerful attacks that the player must actively dodge. This mechanic exists at every content tier, starting in the open world so players learn it before dungeons.
 
-| Source | Telegraph chance | Damage | UI |
-|---|---|---|---|
-| Named boss (dungeon/raid) | 30% per round | 3× boss base damage | Yellow DODGE button |
-| Elite mob | 20% per round | 2× mob base damage | Yellow DODGE button |
-| Raid final boss (enraged) | 100% every round | **Instant kill** | Red pulsing DODGE button |
+The telegraph fires after a mob's counter-attack: the `⚠ X winds up Y! DODGE!` message appears and a **DODGE button** with a 3-second countdown replaces (or overlays) the normal attack button. The player must click before the timer expires. Missing the window deals the full telegraphed hit automatically on the next attack call.
 
-If the player clicks DODGE, the round resolves with `dodged=true` — the boss attack misses entirely. If the timer expires or the player ignores it, the next `POST /dungeon/attack` resolves the hit. Telegraph state is cleared whenever the room is cleared so it never bleeds into the next room. The sim always dodges optimally (`dodged=true`) and logs `⚠ Telegraph: X → DODGING`.
+| Source | Trigger | Damage if missed | UI | Location |
+|---|---|---|---|---|
+| Named mob (open world) | 20% per round | 2× mob base damage | Yellow DODGE in target frame | `_pending_telegraphs` dict (in-memory) |
+| Elite mob (open world) | 15% per round | 1.5× mob base damage | Yellow DODGE in target frame | `_pending_telegraphs` dict |
+| Named boss (dungeon/raid) | 30% per round | 3× boss base damage | Yellow DODGE replaces ATTACK | `DungeonRun.pending_telegraph` |
+| Elite mob (dungeon) | 20% per round | 2× mob base damage | Yellow DODGE replaces ATTACK | `DungeonRun.pending_telegraph` |
+| Raid final boss (enraged) | 100% every round | **Instant kill** | Red pulsing DODGE replaces ATTACK | `DungeonRun.pending_telegraph` |
+
+**State per tier:**
+- **Open world** — stored in `_pending_telegraphs[player_id]` (in-memory dict in `main.py`). Cleared on mob death and player death. `/action/attack` accepts `dodged=bool`; dodge attacks bypass the 1.5s rate limit since they resolve a prior telegraphed hit, not a new offensive action.
+- **Dungeon/raid** — stored on `DungeonRun.pending_telegraph`. Cleared on room clear. `/dungeon/attack` accepts `dodged=bool`.
+
+**Teaching progression** — players encounter the mechanic first on named mobs in the open world (2× damage, survivable, low pressure), then on dungeon elites and bosses (2–3× damage, higher stakes), then on raid bosses with enrage one-shots. Each tier uses the same 3-second DODGE button with a draining countdown bar.
+
+The sim always dodges optimally at every tier — open world `kill_mob` tracks `pending_telegraph` in the attack response and passes `dodged=True` on the next call; dungeon `do_dungeon_run` does the same from `run.pending_telegraph`.
 
 **Loot:** On run cleared, `_roll_loot()` is called with `zone_tier="dungeon"` or `"raid"`. Dungeon: 1–2 drops (Epic base rate 15%, boosted by ×1.6 tier = 24% effective). Raid: 3 guaranteed drops. Loot is auto-equipped on drop if the stat total beats the currently equipped piece — old piece goes to inventory. All items are class-biased toward the player's class using the same slot-weight system as open world.
 
@@ -589,7 +600,7 @@ All endpoints are in `backend/main.py`. Backend runs on `http://localhost:8000`.
 | Method | Path | Description |
 |---|---|---|
 | `POST` | `/action/move/{player_id}` | Move to location. Param: `location_id` |
-| `POST` | `/action/attack/{player_id}` | Attack mob. Param: `mob_name`. Returns full combat delta |
+| `POST` | `/action/attack/{player_id}` | Attack mob. Params: `mob_name`, `dodged` (bool, default false — set true when player dodges a pending open-world telegraph; bypasses rate limit). Returns full combat delta + `pending_telegraph` (dict or null). |
 | `POST` | `/action/flee/{player_id}` | Flee combat. 60% escape chance, counter-hit on failure. Param: `mob_name` |
 | `POST` | `/action/equip/{player_id}` | Equip item from inventory. Param: `item_id` |
 | `POST` | `/action/unequip/{player_id}` | Move equipped item back to bag. Param: `slot` (`head`, `chest`, `hands`, `legs`, `feet`, `main_hand`, `off_hand`) |
