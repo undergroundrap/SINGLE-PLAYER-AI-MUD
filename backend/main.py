@@ -517,8 +517,10 @@ async def attack(player_id: str, mob_name: str):
     respawn_location_id = None
 
     if target_dead:
-        # XP: elites give 2×, named give 4×
-        xp_base  = ScalingMath.get_xp_required(target_mob.level) // 8
+        # XP: always use the higher of player vs mob level so open-world grinding
+        # always yields ~8 kills per level — not diminishing returns on low-level mobs.
+        # Elites give 2×, named give 4×.
+        xp_base  = ScalingMath.get_xp_required(max(player.level, target_mob.level)) // 8
         xp_mult  = 4 if target_mob.is_named else (2 if target_mob.is_elite else 1)
         xp_gained = xp_base * xp_mult
 

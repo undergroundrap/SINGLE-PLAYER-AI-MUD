@@ -334,7 +334,7 @@ def resolve_round(run: DungeonRun, player: Player) -> dict:
     alive_mob_ids = {m.id for m in alive_mobs}
     for mob in room.mobs:
         if mob.id in alive_mob_ids and mob.hp <= 0:
-            xp_base  = ScalingMath.get_xp_required(mob.level) // 8
+            xp_base  = ScalingMath.get_xp_required(max(player.level, mob.level)) // 8
             xp_mult  = 4 if mob.is_named else (2 if mob.is_elite else 1)
             xp_gained   += xp_base * xp_mult
             gold_gained += random.randint(1, max(1, mob.level)) * (3 if mob.is_named or mob.is_elite else 1)

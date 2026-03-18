@@ -278,12 +278,8 @@ def _clear_location(pid: str, loc_id: str, zone_id: str) -> int:
         return 0
 
     mobs = alive_mobs_at(loc)
-    seen: set[str] = set()
     for mob in mobs:
         name = mob["name"]
-        if name in seen:
-            continue
-        seen.add(name)
         rank  = ("⚑ " if mob.get("is_named") else "★ " if mob.get("is_elite") else "")
         log(f"    ⚔ {rank}{name}  lv{mob['level']}  {mob['hp']}/{mob['max_hp']} HP", Y)
         use_potion_if_low(pid)
