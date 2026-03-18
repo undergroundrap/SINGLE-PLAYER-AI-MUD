@@ -44,6 +44,7 @@ class Location(BaseModel):
     npcs: List[NPC] = []
     mobs: List[Mob] = []
     exits: Dict[str, Optional[str]] = {}
+    resources: List[str] = []  # [plant_name, fish_species] for path locations; [] elsewhere
 
 class QuestType(str, Enum):
     KILL = "kill"

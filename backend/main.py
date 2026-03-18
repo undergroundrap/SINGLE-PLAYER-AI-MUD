@@ -26,6 +26,10 @@ BAG_SIZE             = 16     # maximum inventory slots (matches UI grid)
 
 _attack_times:     dict[str, float] = {}  # player_id -> last attack timestamp
 _gather_times:     dict[str, float] = {}  # player_id -> last gather timestamp
+_harvest_times:    dict[str, float] = {}  # player_id -> last harvest timestamp
+_fish_times:       dict[str, float] = {}  # player_id -> last fish timestamp
+HARVEST_CD = 8.0   # seconds
+FISH_CD    = 12.0  # seconds — fishing is slower, more passive
 _potion_cooldowns: dict[str, float] = {}  # "{player_id}:heal" | "{player_id}:xp" -> last use time
 _active_xp_buffs:  dict[str, dict]  = {}  # player_id -> {"bonus_pct": int, "charges": int}
 _dungeon_runs:     dict[str, DungeonRun] = {}  # run_id -> DungeonRun (ephemeral)
@@ -734,6 +738,94 @@ async def gather(player_id: str):
 
 
 # ──────────────────────────────────────────────
+# PATH ACTIONS: HARVEST & FISH
+# ──────────────────────────────────────────────
+
+@app.post("/action/harvest/{player_id}")
+async def harvest(player_id: str):
+    p_data = await vec_db.get_player(player_id)
+    if not p_data: raise HTTPException(status_code=404, detail="Player not found")
+    player = Player(**p_data)
+
+    z_data = await vec_db.get_zone(player.current_zone_id)
+    if not z_data: return {"success": False, "message": "Zone not found."}
+    zone_obj = Zone(**z_data)
+    loc = next((l for l in zone_obj.locations if l.id == player.current_location_id), None)
+
+    if not loc or not loc.resources:
+        return {"success": False, "message": "Nothing to harvest here."}
+
+    plant_name = loc.resources[0]
+    now = time.time()
+
+    alive_mobs = [m for m in loc.mobs if m.respawn_at is None or m.respawn_at <= now]
+    if alive_mobs:
+        return {"success": False, "interrupted": True, "message": f"⚠ A {alive_mobs[0].name} interrupts your harvesting!"}
+
+    last = _harvest_times.get(player_id, 0)
+    if now - last < HARVEST_CD:
+        wait = round(HARVEST_CD - (now - last), 2)
+        return {"success": False, "message": f"You search the undergrowth... ({wait}s remaining)", "on_cooldown": True}
+    _harvest_times[player_id] = now
+
+    if len(player.inventory) >= BAG_SIZE:
+        return {"success": False, "message": "Bags full — sell something first."}
+
+    item = Item(
+        id=f"harvest_{player_id}_{int(now)}_{random.randint(100, 999)}",
+        name=plant_name,
+        description=f"A {plant_name.lower()} gathered from the path. Can be sold to a merchant.",
+        level=player.level,
+        rarity="Common",
+        stats={"value": 5},
+        slot="material",
+    )
+    player.inventory.append(item)
+    await vec_db.save_player(player_id, player.model_dump(mode='json'))
+    return {"success": True, "message": f"You harvest {plant_name}.", "item": item.model_dump(mode='json')}
+
+
+@app.post("/action/fish/{player_id}")
+async def fish(player_id: str):
+    p_data = await vec_db.get_player(player_id)
+    if not p_data: raise HTTPException(status_code=404, detail="Player not found")
+    player = Player(**p_data)
+
+    z_data = await vec_db.get_zone(player.current_zone_id)
+    if not z_data: return {"success": False, "message": "Zone not found."}
+    zone_obj = Zone(**z_data)
+    loc = next((l for l in zone_obj.locations if l.id == player.current_location_id), None)
+
+    if not loc or len(loc.resources) < 2:
+        return {"success": False, "message": "No fishing spot here."}
+
+    fish_name = loc.resources[1]
+    now = time.time()
+
+    last = _fish_times.get(player_id, 0)
+    if now - last < FISH_CD:
+        wait = round(FISH_CD - (now - last), 2)
+        return {"success": False, "message": f"Your line is still in the water... ({wait}s remaining)", "on_cooldown": True}
+    _fish_times[player_id] = now
+
+    if len(player.inventory) >= BAG_SIZE:
+        return {"success": False, "message": "Bags full — sell something first."}
+
+    item = Item(
+        id=f"fish_{player_id}_{int(now)}_{random.randint(100, 999)}",
+        name=fish_name,
+        description=f"A fresh {fish_name.lower()} caught nearby. Sell it to a merchant for gold.",
+        level=player.level,
+        rarity="Common",
+        stats={"value": 5},
+        slot="material",
+    )
+    player.inventory.append(item)
+    await vec_db.save_player(player_id, player.model_dump(mode='json'))
+    return {"success": True, "message": f"You catch a {fish_name}!", "item": item.model_dump(mode='json')}
+
+
+# ──────────────────────────────────────────────
 # PATROL ENCOUNTERS
 # ──────────────────────────────────────────────
 
@@ -752,9 +844,9 @@ async def patrol_check(player_id: str):
     if not loc:
         return {"patrol": False}
 
-    # No patrol in hub (safe zone with NPCs) or while mobs are already alive here
+    # No patrol in hub, path locations (fishing/harvest nodes), or while mobs already alive
     living = [m for m in loc.mobs if m.respawn_at is None and m.hp > 0]
-    if living or loc.npcs:
+    if living or loc.npcs or loc.resources:
         return {"patrol": False}
 
     # 25% chance per check

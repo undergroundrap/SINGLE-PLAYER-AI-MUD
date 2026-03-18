@@ -21,6 +21,60 @@ def _forage_resource(level: int) -> str:
     else:             pool = _FORAGE_RESOURCES["endgame"]
     return random.choice(pool)
 
+# Free-harvest plant names for path locations (distinct from quest forage items)
+_PLANT_NAMES: dict[str, list[str]] = {
+    "low":    ["Wildroot Berry", "Dewcap Mushroom", "Meadow Clover", "Thornleaf", "Briarsap"],
+    "mid":    ["Ashberry", "Shadowcap", "Voidsprig", "Ironbloom", "Duskpetal"],
+    "high":   ["Runic Lichen", "Voidthorn Berry", "Soulbloom", "Wraithcap", "Necrospore"],
+    "endgame":["Primordial Frond", "Titan Marrow", "Void Blossom", "Ancient Resin", "Oblivion Spore"],
+}
+
+# Fish species for path fishing holes
+_FISH_SPECIES: dict[str, list[str]] = {
+    "low":    ["River Perch", "Mudpike", "Stream Trout", "Bog Carp", "Spotted Minnow"],
+    "mid":    ["Shadow Bass", "Darkwater Eel", "Emberfin", "Spectral Trout", "Ironscale Pike"],
+    "high":   ["Voidfin", "Soul Darter", "Runic Salmon", "Blighted Eel", "Nightmare Carp"],
+    "endgame":["Abyssal Lungfish", "Null Eel", "Titan Catfish", "Void Darter", "Primal Leviathan Fillet"],
+}
+
+# Path name suffixes and description templates
+_PATH_SUFFIXES = ["Trail", "Crossing", "Pass", "Run", "Track", "Way"]
+_PATH_DESCS = [
+    "A winding path through the undergrowth. A stream trickles nearby, and wild plants grow thick along the verge.",
+    "A narrow trail between clearings. The earth is soft here and the air smells of river water.",
+    "A quiet stretch of path. Roots and rocks break the ground, and something fishy lingers in the air from a nearby waterway.",
+    "A rutted track cutting through the wilds. The sound of running water drifts from somewhere close.",
+]
+
+def _plant_name(level: int) -> str:
+    if level <= 10:   pool = _PLANT_NAMES["low"]
+    elif level <= 20: pool = _PLANT_NAMES["mid"]
+    elif level <= 40: pool = _PLANT_NAMES["high"]
+    else:             pool = _PLANT_NAMES["endgame"]
+    return random.choice(pool)
+
+def _fish_species(level: int) -> str:
+    if level <= 10:   pool = _FISH_SPECIES["low"]
+    elif level <= 20: pool = _FISH_SPECIES["mid"]
+    elif level <= 40: pool = _FISH_SPECIES["high"]
+    else:             pool = _FISH_SPECIES["endgame"]
+    return random.choice(pool)
+
+def _make_path_location(path_id: str, zone_name: str, level: int,
+                         back_dir: str, back_id: str,
+                         fwd_dir: str, fwd_id: str) -> "Location":
+    name = f"{zone_name} {random.choice(_PATH_SUFFIXES)}"
+    desc = random.choice(_PATH_DESCS)
+    return Location(
+        id=path_id,
+        name=name,
+        description=desc,
+        mobs=[],
+        npcs=[],
+        exits={back_dir: back_id, fwd_dir: fwd_id},
+        resources=[_plant_name(level), _fish_species(level)],
+    )
+
 def _plural(word: str) -> str:
     """Simple English pluralizer for quest objectives."""
     w = word.strip()
@@ -358,6 +412,8 @@ class WorldGenerator:
             directions = ["north", "south", "east", "west"]
 
             all_quest_ids = [f"q_{i}_{zone_id}" for i in range(len(tpl["quests"]))]
+            path_ids = [f"path_{i}_{zone_id}" for i in range(len(poi_ids))]
+
             hub_loc = Location(
                 id=hub_id,
                 name=tpl["hub"][0],
@@ -374,11 +430,18 @@ class WorldGenerator:
                     ),
                     _make_vendor(hub_id, zone_id, level),
                 ],
-                exits={directions[i]: poi_ids[i] for i in range(len(poi_ids))}
+                exits={directions[i]: path_ids[i] for i in range(len(poi_ids))}
             )
 
             locations = [hub_loc]
             for i, poi_id in enumerate(poi_ids):
+                opp = ScalingMath.get_opposite_direction(directions[i])
+                # Insert path node between hub and POI
+                locations.append(_make_path_location(
+                    path_ids[i], tpl["name"], level,
+                    back_dir=opp, back_id=hub_id,
+                    fwd_dir=directions[i], fwd_id=poi_id,
+                ))
                 q = tpl["quests"][i] if i < len(tpl["quests"]) else tpl["quests"][0]
                 quest_type = q[1]
                 if quest_type == "explore":
@@ -386,7 +449,7 @@ class WorldGenerator:
                         id=poi_id,
                         name=tpl["pois"][i][0],
                         description=tpl["pois"][i][1],
-                        exits={ScalingMath.get_opposite_direction(directions[i]): hub_id},
+                        exits={opp: path_ids[i]},
                         mobs=[]
                     ))
                 else:
@@ -395,7 +458,7 @@ class WorldGenerator:
                         id=poi_id,
                         name=tpl["pois"][i][0],
                         description=tpl["pois"][i][1],
-                        exits={ScalingMath.get_opposite_direction(directions[i]): hub_id},
+                        exits={opp: path_ids[i]},
                         mobs=_make_mobs(mob_name, level, zone_id, i, count=4)
                     ))
 
@@ -597,6 +660,9 @@ class WorldGenerator:
         npc1_quest_ids = [f"q_{i}_{zone_id}" for i in range(3)]   # quests 0, 1, 2
         npc2_quest_ids = [f"q_{i}_{zone_id}" for i in range(3, 6)] # quests 3, 4, 5 (includes forage)
 
+        path_ids = [f"path_{i}_{zone_id}" for i in range(len(poi_ids))]
+        zone_name_for_paths = data.get("zone_name", "Unknown Zone")
+
         hub_loc = Location(
             id=hub_id,
             name=data.get("hub_name", "Settlement"),
@@ -622,7 +688,7 @@ class WorldGenerator:
                 ),
                 _make_vendor(hub_id, zone_id, level),
             ],
-            exits={directions[i]: poi_ids[i] for i in range(len(poi_ids))}
+            exits={directions[i]: path_ids[i] for i in range(len(poi_ids))}
         )
 
         # POI mob assignment:
@@ -635,6 +701,13 @@ class WorldGenerator:
         locations = [hub_loc]
         last_poi_idx = len(poi_ids) - 1  # index 3
         for i, poi_id in enumerate(poi_ids):
+            opp = ScalingMath.get_opposite_direction(directions[i])
+            # Insert path node between hub and POI
+            locations.append(_make_path_location(
+                path_ids[i], zone_name_for_paths, level,
+                back_dir=opp, back_id=hub_id,
+                fwd_dir=directions[i], fwd_id=poi_id,
+            ))
             loc_flavor = locations_data[i] if i < len(locations_data) else {"name": f"Point {i+1}", "description": "An uncharted area."}
             loc_name = loc_flavor.get("name", f"Point {i+1}")
             loc_desc = loc_flavor.get("description", "A remote area.")
@@ -642,7 +715,6 @@ class WorldGenerator:
             is_boss_chamber = is_dungeon and i == last_poi_idx
 
             if mob_for_poi is None:
-                # Pure exploration — no mobs
                 mobs = []
             else:
                 mob_count = 3 if is_boss_chamber else random.randint(3, 5)
@@ -655,7 +727,7 @@ class WorldGenerator:
                 id=poi_id,
                 name=loc_name,
                 description=loc_desc,
-                exits={ScalingMath.get_opposite_direction(directions[i]): hub_id},
+                exits={opp: path_ids[i]},
                 mobs=mobs,
             ))
 

@@ -90,7 +90,11 @@ export default function Home() {
   // Gather (forage quests)
   const [gatherCooldown, setGatherCooldown] = useState<number>(0); // 0–100 % — used only for text label
   const [isGathering, setIsGathering] = useState<boolean>(false);
+  const [isHarvesting, setIsHarvesting] = useState<boolean>(false);
+  const [isFishing, setIsFishing] = useState<boolean>(false);
   const gatherBarRef = useRef<HTMLDivElement>(null); // driven directly by rAF for smooth animation
+  const harvestBarRef = useRef<HTMLDivElement>(null);
+  const fishBarRef = useRef<HTMLDivElement>(null);
   // Dungeon
   const [dungeonRun, setDungeonRun] = useState<any>(null);
   const [dungeonAttacking, setDungeonAttacking] = useState<boolean>(false);
@@ -418,12 +422,16 @@ export default function Home() {
     );
     if (hasForage) hb.set(idx++, () => executeCommand('gather'));
 
+    const locRes: string[] = loc?.resources || [];
+    if (locRes.length > 0 && locRes[0]) hb.set(idx++, () => executeCommand('harvest'));
+    if (locRes.length > 1 && locRes[1]) hb.set(idx++, () => executeCommand('fish'));
+
     hb.set(idx++, () => executeCommand('quests'));
     hb.set(idx++, () => executeCommand('inventory'));
     hb.set(idx++, () => executeCommand('who'));
 
     hotbarActionsRef.current = hb;
-  }, [zone, player, autoAttackTarget, isGathering]);
+  }, [zone, player, autoAttackTarget, isGathering, isHarvesting, isFishing]);
 
   // World Chat Auto-Scroll
   useEffect(() => {
@@ -639,26 +647,32 @@ export default function Home() {
   };
 
   const renderTargetFrame = () => {
-    if (isGathering) {
-      const secsRemaining = Math.max(0, ((100 - gatherCooldown) / 100) * 8).toFixed(1);
-      return (
-        <div className="target-frame">
-          <div className="gather-panel">
-            <div className="gather-label">
-              <span>Gathering Resources</span>
-              <span>{secsRemaining}s</span>
-            </div>
-            <div style={{ height: '10px', background: '#000', border: '1px solid #7a5c00', borderRadius: '2px', overflow: 'hidden' }}>
-              <div ref={gatherBarRef} style={{
-                width: '0%',
-                height: '100%',
-                background: 'linear-gradient(to right, #a07800, #ffe033)',
-                boxShadow: '0 0 12px rgba(255,200,0,0.5)',
-              }} />
-            </div>
+    const makeResourceFrame = (
+      label: string, secs: string, barRef: React.RefObject<HTMLDivElement | null>,
+      barColor: string, glowColor: string, borderColor: string
+    ) => (
+      <div className="target-frame">
+        <div className="gather-panel" style={{ borderColor }}>
+          <div className="gather-label" style={{ color: barColor }}>
+            <span>{label}</span>
+            <span>{secs}s</span>
+          </div>
+          <div style={{ height: '10px', background: '#000', border: `1px solid ${borderColor}`, borderRadius: '2px', overflow: 'hidden' }}>
+            <div ref={barRef} style={{ width: '0%', height: '100%', background: barColor, boxShadow: `0 0 12px ${glowColor}` }} />
           </div>
         </div>
-      );
+      </div>
+    );
+
+    if (isGathering) {
+      const s = Math.max(0, ((100 - gatherCooldown) / 100) * 8).toFixed(1);
+      return makeResourceFrame('Gathering Resources', s, gatherBarRef, 'linear-gradient(to right, #a07800, #ffe033)', 'rgba(255,200,0,0.5)', '#7a5c00');
+    }
+    if (isHarvesting) {
+      return makeResourceFrame('Harvesting Plants', '8.0', harvestBarRef, 'linear-gradient(to right, #2d7a2d, #6de06d)', 'rgba(80,200,80,0.5)', '#2d6b2d');
+    }
+    if (isFishing) {
+      return makeResourceFrame('Fishing', '12.0', fishBarRef, 'linear-gradient(to right, #1a4a7a, #4ab8e0)', 'rgba(74,184,224,0.5)', '#1a4a7a');
     }
     if (!target) return null;
     return (
@@ -2396,6 +2410,64 @@ export default function Home() {
           }
         })();
 
+      } else if (lowerCmd === 'harvest' || lowerCmd === 'pick' || lowerCmd === 'herb') {
+        if (!playerId) return;
+        if (isGathering || isHarvesting || isFishing) { addLog("Already busy...", "hint"); return; }
+        setIsHarvesting(true);
+        (async () => {
+          const HARVEST_CD = 8000;
+          try {
+            const res = await fetch(`http://localhost:8000/action/harvest/${playerId}`, { method: 'POST' });
+            const data = await res.json();
+            if (!data.success) { addLog(data.message, data.interrupted ? "error" : "hint"); return; }
+            addLog(data.message, "system");
+            if (data.item) setPlayer((prev: any) => prev ? { ...prev, inventory: [...(prev.inventory || []), data.item] } : prev);
+            await new Promise<void>(resolve => {
+              const start = Date.now();
+              const tick = () => {
+                const pct = Math.min(100, ((Date.now() - start) / HARVEST_CD) * 100);
+                if (harvestBarRef.current) harvestBarRef.current.style.width = `${pct}%`;
+                if (pct < 100) requestAnimationFrame(tick); else resolve();
+              };
+              requestAnimationFrame(tick);
+            });
+          } catch (err: any) {
+            addLog(`Harvest error: ${err.message}`, "error");
+          } finally {
+            setIsHarvesting(false);
+            if (harvestBarRef.current) harvestBarRef.current.style.width = '0%';
+          }
+        })();
+
+      } else if (lowerCmd === 'fish' || lowerCmd === 'angle' || lowerCmd === 'cast') {
+        if (!playerId) return;
+        if (isGathering || isHarvesting || isFishing) { addLog("Already busy...", "hint"); return; }
+        setIsFishing(true);
+        (async () => {
+          const FISH_CD = 12000;
+          try {
+            const res = await fetch(`http://localhost:8000/action/fish/${playerId}`, { method: 'POST' });
+            const data = await res.json();
+            if (!data.success) { addLog(data.message, "hint"); return; }
+            addLog(data.message, "system");
+            if (data.item) setPlayer((prev: any) => prev ? { ...prev, inventory: [...(prev.inventory || []), data.item] } : prev);
+            await new Promise<void>(resolve => {
+              const start = Date.now();
+              const tick = () => {
+                const pct = Math.min(100, ((Date.now() - start) / FISH_CD) * 100);
+                if (fishBarRef.current) fishBarRef.current.style.width = `${pct}%`;
+                if (pct < 100) requestAnimationFrame(tick); else resolve();
+              };
+              requestAnimationFrame(tick);
+            });
+          } catch (err: any) {
+            addLog(`Fishing error: ${err.message}`, "error");
+          } finally {
+            setIsFishing(false);
+            if (fishBarRef.current) fishBarRef.current.style.width = '0%';
+          }
+        })();
+
       } else if (lowerCmd === 'advance' || lowerCmd === 'next room') {
         if (!dungeonRun) {
           addLog("You are not in a dungeon.", "hint");
@@ -2826,7 +2898,7 @@ export default function Home() {
             ? renderDungeonTheater()
             : (
               <div
-                className={`glass-panel terminal-wrapper flex-1${levelUpFlash ? ' levelup-flash' : autoAttackTarget ? ' combat-pulse' : isGathering ? ' gather-pulse' : ''}`}
+                className={`glass-panel terminal-wrapper flex-1${levelUpFlash ? ' levelup-flash' : autoAttackTarget ? ' combat-pulse' : isGathering || isHarvesting || isFishing ? ' gather-pulse' : ''}`}
                 onAnimationEnd={() => setLevelUpFlash(false)}
               >
                 <div className="terminal-output" ref={scrollRef}>
@@ -3289,6 +3361,9 @@ export default function Home() {
 
             const completedQuests = (player?.active_quests || []).filter((q: any) => q.is_completed);
             const hasQuestGiver = loc?.npcs?.some((n: any) => n.role === 'quest_giver');
+            const locResources: string[] = loc?.resources || [];
+            const hasPlant = locResources.length > 0 && !!locResources[0];
+            const hasFish  = locResources.length > 1 && !!locResources[1];
 
             return (
               <>
@@ -3414,6 +3489,34 @@ export default function Home() {
                       />
                     )}
                     <span className="relative">{isGathering ? 'Gathering...' : 'Gather'}</span>
+                    <span className="keybind-hint">{currentIdx++}</span>
+                  </button>
+                )}
+
+                {/* HARVEST — shown on path locations with plants */}
+                {hasPlant && (
+                  <button
+                    type="button"
+                    className={`tool-button relative overflow-hidden !text-green-400/90 !border-green-900/50 ${isHarvesting ? 'opacity-50 cursor-not-allowed animate-pulse' : ''}`}
+                    disabled={isGathering || isHarvesting || isFishing}
+                    onClick={() => executeCommand('harvest')}
+                    title={`Harvest ${locResources[0]}`}
+                  >
+                    <span className="relative">{isHarvesting ? 'Harvesting...' : `🌿 ${locResources[0]}`}</span>
+                    <span className="keybind-hint">{currentIdx++}</span>
+                  </button>
+                )}
+
+                {/* FISH — shown on path locations with fishing holes */}
+                {hasFish && (
+                  <button
+                    type="button"
+                    className={`tool-button relative overflow-hidden !text-blue-400/90 !border-blue-900/50 ${isFishing ? 'opacity-50 cursor-not-allowed animate-pulse' : ''}`}
+                    disabled={isGathering || isHarvesting || isFishing}
+                    onClick={() => executeCommand('fish')}
+                    title={`Fish for ${locResources[1]}`}
+                  >
+                    <span className="relative">{isFishing ? 'Fishing...' : `🎣 ${locResources[1]}`}</span>
                     <span className="keybind-hint">{currentIdx++}</span>
                   </button>
                 )}
