@@ -125,13 +125,26 @@ export default function Home() {
     return () => window.removeEventListener('mousemove', handleGlobalMouseMove);
   }, []);
 
-  // Re-focus the command input whenever the step changes away from in-game
+  // Re-focus the command input whenever the step changes
   useEffect(() => {
-    if (step !== 'game') {
-      const t = setTimeout(() => inputRef.current?.focus(), 80);
-      return () => clearTimeout(t);
-    }
+    const t = setTimeout(() => inputRef.current?.focus(), 80);
+    return () => clearTimeout(t);
   }, [step]);
+
+  // Redirect any keypress back to the input if something else stole focus
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const active = document.activeElement;
+      if (active === inputRef.current) return;
+      if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return;
+      // Only redirect printable keys (ignore modifier-only, F-keys, etc.)
+      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        inputRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // ── Patrol encounter timer ──────────────────────────────────────────────
   // Every 45s, ask the backend if a wandering enemy has appeared.
