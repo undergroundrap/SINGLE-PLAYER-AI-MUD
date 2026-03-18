@@ -125,6 +125,12 @@ class DungeonRoom(BaseModel):
     mobs: List[Mob] = []
     cleared: bool = False
 
+class PendingTelegraph(BaseModel):
+    name: str               # e.g. "Crushing Blow"
+    damage_mult: float      # multiplier on boss base damage
+    is_oneshot: bool = False  # True during raid enrage → instant kill
+    window_ms: int = 3000   # client-side dodge window in ms
+
 class DungeonRun(BaseModel):
     id: str
     player_id: str
@@ -137,6 +143,7 @@ class DungeonRun(BaseModel):
     combat_log: List[str] = []  # rolling 5 lines
     status: str = "active"      # active | cleared | wiped
     boss_enraged: bool = False   # raid phase 2: triggers at 30% boss HP
+    pending_telegraph: Optional[PendingTelegraph] = None  # set when boss winds up an attack
     loot: List[dict] = []
 
 class Zone(BaseModel):

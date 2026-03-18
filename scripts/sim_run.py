@@ -66,6 +66,9 @@ milestones: list[str]  = []   # collected for final summary
 _sim_start      = time.time()
 _section_start  = time.time()
 
+dungeon_run_stats: list[dict] = []   # per-run analytics collected during Phase 2
+raid_run_stats:    list[dict] = []   # per-run analytics collected during Phase 3
+
 
 def _ts() -> str:
     return f"{DIM}[{time.time() - _sim_start:6.1f}s]{RST}"
@@ -456,13 +459,116 @@ def do_hub_routine(pid: str, zone_id: str, vendor_name: str | None) -> None:
         buy_potions(pid, vendor_name)
 
 
+# ── Combat analytics ──────────────────────────────────────────────────────────
+
+_PROC_LABELS = [
+    "BATTLE FURY", "DIVINE GRACE", "POWER SHOT", "EVASION",
+    "HOLY MEND", "CHAIN LIGHTNING", "ARCANE SURGE", "SOUL DRAIN", "REJUVENATION",
+]
+_RARITY_ORDER = ["Legendary", "Epic", "Rare", "Uncommon", "Common"]
+
+
+def _blank_stats() -> dict:
+    return {
+        "rounds": 0, "xp": 0, "gold": 0,
+        "damage_dealt": 0,    # total HP removed from mobs across all rounds
+        "telegraphs": 0,      # boss wind-up events detected
+        "dodges": 0,          # sim successfully dodged (always = telegraphs; sim is optimal)
+        "party_deaths": 0,    # AI NPC member deaths
+        "procs": {},          # proc_label → fire count
+        "loot": [],           # list of {rarity, name, slot}
+    }
+
+
+def _merge_stats(totals: dict, run: dict) -> None:
+    """Add one run's stats into a running total dict."""
+    for k in ("rounds", "xp", "gold", "damage_dealt", "telegraphs", "dodges", "party_deaths"):
+        totals[k] = totals.get(k, 0) + run.get(k, 0)
+    for label, cnt in run.get("procs", {}).items():
+        totals["procs"][label] = totals["procs"].get(label, 0) + cnt
+    totals["loot"].extend(run.get("loot", []))
+
+
+def _rarity_sort(r: str) -> int:
+    try:
+        return _RARITY_ORDER.index(r)
+    except ValueError:
+        return 99
+
+
+def _print_run_stats(kind: str, run_num: int, stats: dict, cleared: bool) -> None:
+    """Print a compact analytics box for a completed run."""
+    rarity_count: dict[str, int] = {}
+    for item in stats["loot"]:
+        r = item.get("rarity", "?")
+        rarity_count[r] = rarity_count.get(r, 0) + 1
+    loot_str = "  ".join(
+        f"{v}×{k}"
+        for k, v in sorted(rarity_count.items(), key=lambda x: _rarity_sort(x[0]))
+    )
+    avg_dps  = stats["damage_dealt"] / max(1, stats["rounds"])
+    proc_str = "  ".join(
+        f"{v}×{k.split()[-1]}"
+        for k, v in sorted(stats["procs"].items(), key=lambda x: -x[1])
+    )[:70]
+    status_str = f"{G}CLEARED{RST}{DIM}" if cleared else f"{R}WIPED{RST}{DIM}"
+    print(f"\n{DIM}  ┌─ {kind} {run_num} analytics ─────────────────────────────────{RST}")
+    print(f"{DIM}  │  {status_str}  ·  {stats['rounds']} rounds  ·  "
+          f"~{avg_dps:.0f} dmg/round  ·  +{stats['xp']} XP  ·  +{stats['gold']}g{RST}")
+    print(f"{DIM}  │  Telegraphs {stats['telegraphs']}  ·  Dodges {stats['dodges']}  ·  "
+          f"Party deaths {stats['party_deaths']}{RST}")
+    if proc_str:
+        print(f"{DIM}  │  Procs: {proc_str}{RST}")
+    if loot_str:
+        print(f"{DIM}  │  Loot:  {loot_str}{RST}")
+    print(f"{DIM}  └──────────────────────────────────────────────────────────{RST}")
+
+
+def _print_aggregate_stats(kind: str, run_list: list[dict]) -> None:
+    """Print totals across all runs of one type."""
+    if not run_list:
+        return
+    totals = _blank_stats()
+    for s in run_list:
+        _merge_stats(totals, s)
+    n = len(run_list)
+    rarity_count: dict[str, int] = {}
+    for item in totals["loot"]:
+        r = item.get("rarity", "?")
+        rarity_count[r] = rarity_count.get(r, 0) + 1
+    loot_str = "  ".join(
+        f"{v}×{k}"
+        for k, v in sorted(rarity_count.items(), key=lambda x: _rarity_sort(x[0]))
+    )
+    proc_str = "  ".join(
+        f"{v}×{k.split()[-1]}"
+        for k, v in sorted(totals["procs"].items(), key=lambda x: -x[1])
+    )[:70]
+    avg_dps = totals["damage_dealt"] / max(1, totals["rounds"])
+    print(f"\n{C}  ── {kind} aggregate ({n} runs) ────────────────────────────────{RST}")
+    print(f"{C}  Rounds {totals['rounds']}  ·  ~{avg_dps:.0f} dmg/round  ·  "
+          f"+{totals['xp']} XP  ·  +{totals['gold']}g{RST}")
+    print(f"{C}  Telegraphs {totals['telegraphs']}  ·  Dodges {totals['dodges']}  ·  "
+          f"Party deaths {totals['party_deaths']}{RST}")
+    if proc_str:
+        print(f"{C}  Procs: {proc_str}{RST}")
+    if loot_str:
+        print(f"{C}  Loot:  {loot_str}{RST}")
+
+
 # ── Dungeon run ───────────────────────────────────────────────────────────────
 
-def do_dungeon_run(pid: str, is_raid: bool = False) -> bool:
+def do_dungeon_run(pid: str, is_raid: bool = False,
+                   run_num: int = 1) -> tuple[bool, dict]:
     """
-    Run a full dungeon or raid. Returns True if cleared, False if wiped/failed.
+    Run a full dungeon or raid.
+    - Detects pending_telegraph on the run and sends dodged=True (sim always dodges).
+    - Tracks per-round analytics: damage dealt, procs, telegraphs, party deaths, loot.
+    Returns (cleared: bool, stats: dict).
     """
-    kind = "RAID" if is_raid else "DUNGEON"
+    kind  = "RAID" if is_raid else "DUNGEON"
+    stats = _blank_stats()
+
     r = req("post", f"/dungeon/enter/{pid}", params={"is_raid": str(is_raid).lower()})
     if not r or r.status_code != 200:
         try:
@@ -470,7 +576,7 @@ def do_dungeon_run(pid: str, is_raid: bool = False) -> bool:
         except Exception:
             detail = r.text[:80] if r else "no response"
         warn(f"{kind} entry failed: {detail}")
-        return False
+        return False, stats
 
     run    = r.json()
     run_id = run["id"]
@@ -487,34 +593,92 @@ def do_dungeon_run(pid: str, is_raid: bool = False) -> bool:
 
         advanced = False
         for _ in range(80):
-            r2 = req("post", f"/dungeon/attack/{run_id}", params={"player_id": pid})
+            # ── Snapshot mob HP before attack for damage-dealt tracking ────────
+            prev_mob_hp: dict[str, int] = {}
+            for rm in run.get("rooms", []):
+                for mob in rm.get("mobs", []):
+                    prev_mob_hp[mob["id"]] = mob.get("hp", 0)
+
+            # ── Snapshot alive party members before attack ──────────────────────
+            alive_before = {m["id"] for m in run.get("party", []) if m.get("is_alive")}
+
+            # ── Detect telegraph — sim always dodges ──────────────────────────
+            pending_tel = run.get("pending_telegraph")
+            dodged      = bool(pending_tel)
+            if pending_tel:
+                stats["telegraphs"] += 1
+                stats["dodges"]     += 1
+                tel_name = pending_tel.get("name", "?")
+                is_oneshot = pending_tel.get("is_oneshot", False)
+                tag = f"{R}[ONE-SHOT]{RST}{DIM}" if is_oneshot else ""
+                log(f"    ⚠ Telegraph: {tel_name} {tag}→ DODGING", C)
+
+            # ── Fire the attack round ─────────────────────────────────────────
+            r2 = req("post", f"/dungeon/attack/{run_id}",
+                     params={"player_id": pid, "dodged": str(dodged).lower()})
             if not r2 or r2.status_code != 200:
                 warn(f"{kind} attack failed")
-                return False
+                _print_run_stats(kind, run_num, stats, cleared=False)
+                return False, stats
             rd  = r2.json()
             run = rd["run"]
 
+            # ── Accumulate round stats ────────────────────────────────────────
+            stats["rounds"] += 1
+            stats["xp"]     += rd.get("xp_gained", 0)
+            stats["gold"]   += rd.get("gold_gained", 0)
+
+            # Damage dealt = total HP removed from mobs this round
+            for rm in run.get("rooms", []):
+                for mob in rm.get("mobs", []):
+                    old = prev_mob_hp.get(mob["id"])
+                    if old is not None:
+                        delta = old - mob.get("hp", 0)
+                        if delta > 0:
+                            stats["damage_dealt"] += delta
+
+            # Proc fires — scan round_log for known proc label strings
             for line in rd.get("round_log", []):
-                log(f"    {line}", DIM)
+                for label in _PROC_LABELS:
+                    if label in line:
+                        stats["procs"][label] = stats["procs"].get(label, 0) + 1
+
+            # Party deaths this round
+            alive_after = {m["id"] for m in run.get("party", []) if m.get("is_alive")}
+            stats["party_deaths"] += len(alive_before - alive_after)
+
+            # ── Log round output (only notable lines to avoid spam) ───────────
+            for line in rd.get("round_log", []):
+                stripped = line.strip()
+                # Show: proc fires, telegraph events, dodge/hit, level-ups, boss enrage
+                if any(sym in stripped for sym in ("★", "✦", "✧", "☽", "⚡ ", "⚑", "⚠", "DODGE", "LEVEL UP", "ENRAGE", "WIPED", "CLEARED", "fallen")):
+                    log(f"    {stripped}", DIM)
 
             if rd.get("wiped"):
                 log(f"  ✗ Party wiped!", R)
-                return False
+                _print_run_stats(kind, run_num, stats, cleared=False)
+                return False, stats
 
             if rd.get("run_cleared"):
                 log(f"  ★ {kind} cleared!", G)
                 loot = rd.get("loot", [])
                 for item in loot:
                     log(f"    [{item.get('rarity')}] {item.get('name')} ({item.get('slot')})", M)
+                    stats["loot"].append({
+                        "rarity": item.get("rarity", "?"),
+                        "name":   item.get("name", "?"),
+                        "slot":   item.get("slot", "?"),
+                    })
                 if not loot:
                     warn(f"{kind} cleared but no loot returned")
-                return True
+                _print_run_stats(kind, run_num, stats, cleared=True)
+                return True, stats
 
             if rd.get("room_cleared"):
                 log(f"  Room {idx + 1} cleared!", G)
                 r3 = req("post", f"/dungeon/advance/{run_id}", params={"player_id": pid})
                 if r3 and r3.status_code == 200:
-                    run = r3.json()  # advance returns the run directly, not wrapped in {"run": ...}
+                    run = r3.json()  # advance returns the run directly
                 advanced = True
                 break
 
@@ -522,9 +686,11 @@ def do_dungeon_run(pid: str, is_raid: bool = False) -> bool:
 
         if not advanced and run.get("status") == "active":
             warn(f"Room {run['room_index'] + 1} didn't clear after 80 rounds")
-            return False
+            _print_run_stats(kind, run_num, stats, cleared=False)
+            return False, stats
 
-    return run.get("status") == "cleared"
+    cleared = run.get("status") == "cleared"
+    return cleared, stats
 
 
 # ── Zone travel ───────────────────────────────────────────────────────────────
@@ -711,7 +877,8 @@ while dungeon_count < MAX_DUNGEONS and not args.skip_to_raid:
         milestone("PHASE 2 → 3: Dungeon Phase Complete", pid)
         break
 
-    cleared = do_dungeon_run(pid, is_raid=False)
+    cleared, run_stats = do_dungeon_run(pid, is_raid=False, run_num=dungeon_count + 1)
+    dungeon_run_stats.append(run_stats)
     dungeon_count += 1
     move(pid, hub_loc_id)
     do_hub_routine(pid, zone_id, vendor_name)
@@ -738,7 +905,8 @@ if not args.quick and p.get("level", 1) >= RAID_LEVEL_GATE and gs >= RAID_GS_GAT
         p, gs = fresh_player(pid)
         log(f"── Raid {raid_count + 1}  Lv{p.get('level',1)}  GS {gs}", C)
 
-        cleared = do_dungeon_run(pid, is_raid=True)
+        cleared, run_stats = do_dungeon_run(pid, is_raid=True, run_num=raid_count + 1)
+        raid_run_stats.append(run_stats)
         raid_count += 1
         move(pid, hub_loc_id)
         do_hub_routine(pid, zone_id, vendor_name)
@@ -770,6 +938,16 @@ else:
         p, gs = fresh_player(pid)
         log(f"Skipping raid phase — Lv{p.get('level',1)} GS {gs} "
             f"(need Lv{RAID_LEVEL_GATE} + GS {RAID_GS_GATE})", Y)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# COMBAT ANALYTICS
+# ═══════════════════════════════════════════════════════════════════════════════
+section("COMBAT ANALYTICS")
+_print_aggregate_stats("DUNGEON", dungeon_run_stats)
+_print_aggregate_stats("RAID",    raid_run_stats)
+if not dungeon_run_stats and not raid_run_stats:
+    log("No dungeon/raid runs completed (--quick or Phase 1 only)", DIM)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

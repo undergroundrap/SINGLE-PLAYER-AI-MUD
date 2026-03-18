@@ -1701,7 +1701,7 @@ async def dungeon_enter(player_id: str, is_raid: bool = False):
 
 
 @app.post("/dungeon/attack/{run_id}")
-async def dungeon_attack(run_id: str, player_id: str):
+async def dungeon_attack(run_id: str, player_id: str, dodged: bool = False):
     run = _dungeon_runs.get(run_id)
     if not run or run.status != "active":
         raise HTTPException(status_code=404, detail="Dungeon run not found or already ended.")
@@ -1711,7 +1711,7 @@ async def dungeon_attack(run_id: str, player_id: str):
         raise HTTPException(status_code=404, detail="Player not found.")
     player = Player(**p_data)
 
-    result = resolve_round(run, player)
+    result = resolve_round(run, player, dodged=dodged)
 
     # Track clears on the player record
     if result.get("run_cleared"):

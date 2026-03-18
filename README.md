@@ -300,6 +300,16 @@ Dungeons and raids are **instanced** — completely separate from the Zone syste
 
 **Raid boss phase 2 (enrage):** When the final boss drops to ≤30% HP, it enrages once — `boss.damage × 1.4`, flag stored on the run, pulsing red banner shown in the UI. The enrage persists until the boss dies.
 
+**Telegraph (Dodge) Mechanic** — bosses and elite mobs have a chance each round to telegraph a powerful attack. When a telegraph fires, the backend sets `pending_telegraph` on the `DungeonRun` and adds a `⚠ winds up [Name]! DODGE!` line to the round log. The frontend swaps the ATTACK button for a flashing **DODGE** button with a draining countdown bar. The player has 3 seconds to click — if they miss the window, the next attack resolves the telegraph hit automatically.
+
+| Source | Telegraph chance | Damage | UI |
+|---|---|---|---|
+| Named boss (dungeon/raid) | 30% per round | 3× boss base damage | Yellow DODGE button |
+| Elite mob | 20% per round | 2× mob base damage | Yellow DODGE button |
+| Raid final boss (enraged) | 100% every round | **Instant kill** | Red pulsing DODGE button |
+
+If the player clicks DODGE, the round resolves with `dodged=true` — the boss attack misses entirely. If the timer expires or the player ignores it, the next `POST /dungeon/attack` resolves the hit. Telegraph state is cleared whenever the room is cleared so it never bleeds into the next room. The sim always dodges optimally (`dodged=true`) and logs `⚠ Telegraph: X → DODGING`.
+
 **Loot:** On run cleared, `_roll_loot()` is called with `zone_tier="dungeon"` or `"raid"`. Dungeon: 1–2 drops (Epic base rate 15%, boosted by ×1.6 tier = 24% effective). Raid: 3 guaranteed drops. Loot is auto-equipped on drop if the stat total beats the currently equipped piece — old piece goes to inventory. All items are class-biased toward the player's class using the same slot-weight system as open world.
 
 **Combat theater UI:** Dungeon/raid content replaces the scrolling chat log with a persistent layout — boss HP bar at top, one row per party member that updates in place each round, 3-line rolling log for dramatic moments only. No scroll, no noise.
@@ -551,7 +561,7 @@ Turn-in happens at any hub quest giver NPC via `POST /quests/complete/{player_id
 | `Item` | `id`, `name`, `description`, `level`, `rarity`, `stats: Dict[str, int]`, `slot` | Equipment stats: `armor` or `damage`. Consumables use `slot = "consumable"` with effect encoded in stats: `{"heal_pct": 40}` or `{"xp_bonus_pct": 75, "xp_charges": 5}`. Harvest/fish drops use `slot = "material"` with `stats: {"value": 5}` — not equippable, included in Sell Junk. |
 | `Quest` | `id`, `title`, `objective`, `quest_type` (`kill/gather/hunt/explore/forage`), `target_id`, `collect_name` (gather/forage quests), `target_count`, `current_progress`, `xp_reward`, `is_completed` | `forage` quests use `target_id` as a location ID (same as `explore`); progress via `/action/gather` not mob kills. |
 | `SimulatedPlayer` | `id`, `name`, `race`, `char_class`, `current_location_id`, `status` | Background actors — not real players. `current_location_id` resolves to a location name in the `/who` output. |
-| `DungeonRun` | `id`, `player_id`, `dungeon_name`, `dungeon_level`, `is_raid`, `room_index`, `rooms: List[DungeonRoom]`, `party: List[DungeonMember]`, `combat_log`, `status` (`active/cleared/wiped`), `boss_enraged` | Stored in-memory only (`_dungeon_runs` dict). Lost on server restart. |
+| `DungeonRun` | `id`, `player_id`, `dungeon_name`, `dungeon_level`, `is_raid`, `room_index`, `rooms: List[DungeonRoom]`, `party: List[DungeonMember]`, `combat_log`, `status` (`active/cleared/wiped`), `boss_enraged`, `pending_telegraph` | Stored in-memory only (`_dungeon_runs` dict). Lost on server restart. `pending_telegraph` is a `PendingTelegraph` object (`name`, `damage_mult`, `is_oneshot`, `window_ms`) when a boss wind-up is active; `null` otherwise. |
 | `DungeonRoom` | `index`, `name`, `mobs: List[Mob]`, `cleared` | Rooms 0–3 for dungeons (room 3 = boss), 0–6 for raids (room 6 = final boss). Corridor rooms have 1–2 light mobs. |
 | `DungeonMember` | `id`, `name`, `char_class`, `role` (`tank/healer/dps`), `hp/max_hp`, `damage`, `last_action`, `is_alive` | AI party member. Stats derived from `ScalingMath` × role multiplier. Uses same `_CLASS_PROCS` table as players. |
 
@@ -612,7 +622,7 @@ All endpoints are in `backend/main.py`. Backend runs on `http://localhost:8000`.
 | Method | Path | Description |
 |---|---|---|
 | `POST` | `/dungeon/enter/{player_id}` | Create an instanced dungeon or raid run. Param: `is_raid` (bool). Gates: lv10/lv20 + GS≥100 for raids. Returns full `DungeonRun`. |
-| `POST` | `/dungeon/attack/{run_id}` | Resolve one full combat round (player + all AI party members + mob counter-attacks). Param: `player_id`. Returns `run`, `round_log`, `room_cleared`, `run_cleared`, `wiped`, `xp_gained`, `gold_gained`, `loot`. |
+| `POST` | `/dungeon/attack/{run_id}` | Resolve one full combat round (player + all AI party members + mob counter-attacks). Params: `player_id`, `dodged` (bool, default false — set true when player successfully dodges a telegraph). Returns `run`, `round_log`, `room_cleared`, `run_cleared`, `wiped`, `xp_gained`, `gold_gained`, `loot`. |
 | `POST` | `/dungeon/advance/{run_id}` | Move to the next room after the current one is cleared. Param: `player_id`. |
 | `POST` | `/dungeon/flee/{run_id}` | Abandon the run. Clears `player.active_dungeon_run_id`. Param: `player_id`. |
 
@@ -771,6 +781,33 @@ Full-run example (no skip flags):
 
 Columns: `[MM:SS]  event  Lv=player level  GS=gear score  D=dungeons cleared  R=raids cleared`
 
+**Per-run analytics box** — printed after every dungeon and raid clear (or wipe):
+
+```
+  ┌─ RAID 2 analytics ─────────────────────────────────
+  │  CLEARED  ·  34 rounds  ·  ~87 dmg/round  ·  +4200 XP  ·  +340g
+  │  Telegraphs 3  ·  Dodges 3  ·  Party deaths 1
+  │  Procs: 4×FURY  3×SHOT  2×MEND  1×DRAIN
+  │  Loot:  1×Epic  2×Rare
+  └──────────────────────────────────────────────────────
+```
+
+**Aggregate analytics section** — printed before FINAL CHARACTER STATE, totals across all runs of each type:
+
+```
+  ── DUNGEON aggregate (9 runs) ────────────────────────────────
+  Rounds 218  ·  ~62 dmg/round  ·  +38400 XP  ·  +2870g
+  Telegraphs 14  ·  Dodges 14  ·  Party deaths 6
+  Procs: 31×FURY  18×SHOT  12×MEND  9×GRACE  6×DRAIN
+  Loot:  2×Epic  15×Rare  9×Uncommon
+
+  ── RAID aggregate (3 runs) ────────────────────────────────────
+  Rounds 97  ·  ~118 dmg/round  ·  +21600 XP  ·  +1640g
+  Telegraphs 11  ·  Dodges 11  ·  Party deaths 4
+  Procs: 14×FURY  9×SHOT  7×MEND  4×DRAIN
+  Loot:  3×Epic  6×Rare
+```
+
 **Reading the output — things to watch for:**
 
 | Signal | What it means |
@@ -785,6 +822,9 @@ Columns: `[MM:SS]  event  Lv=player level  GS=gear score  D=dungeons cleared  R=
 | `Too many empty sweeps` | Mob respawn timer too long or respawn logic broken |
 | `Hit dungeon cap` without reaching GS 100 | Dungeon loot not scaling GS fast enough — check loot tier multipliers |
 | `Hit raid cap` without zone travel | Raid loot not pushing GS over zone travel threshold |
+| `Telegraphs N  ·  Dodges 0` | Telegraph mechanic broken — sim should always dodge, check `pending_telegraph` in response |
+| `Party deaths` very high | Mob damage overtuned for party HP pool at that level |
+| `~dmg/round` much lower than expected | Party members not contributing damage — check `_member_as_mob` or role logic |
 
 If something looks off, paste the full terminal output — the timestamps make it easy to spot where time is being spent unexpectedly.
 

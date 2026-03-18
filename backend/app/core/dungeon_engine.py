@@ -11,7 +11,7 @@ All combatants resolve in the same round tick:
 import random
 import uuid
 import time
-from app.models.schemas import DungeonMember, DungeonRoom, DungeonRun, Mob, Player
+from app.models.schemas import DungeonMember, DungeonRoom, DungeonRun, PendingTelegraph, Mob, Player
 from app.core.scaling_math import ScalingMath, CLASS_STATS, apply_levelups
 from app.core.combat_engine import CombatEngine
 from app.core.world_generator import _make_mobs, _roll_loot
@@ -76,6 +76,11 @@ _ROOM_NAMES = [
     ["The Dark Passage", "The Winding Corridor", "The Collapsed Tunnel",    # 5: corridor (light trash)
      "The Echoing Hallway", "The Bloodstained Path"],
 ]
+
+# ── Telegraph (dodge mechanic) names ──────────────────────────────────────────
+_TELEGRAPH_BOSS  = ["Crushing Blow", "Death Gaze", "Rending Strike", "Vile Eruption", "Volcanic Slam"]
+_TELEGRAPH_ELITE = ["Heavy Slam", "Ensnaring Grasp", "Brutal Charge", "Spine Crush"]
+_TELEGRAPH_ENRAGE = "ANNIHILATE"  # one-shot on raid boss enrage — always shows
 
 # Mob type pools for dungeon rooms keyed by level tier
 _DUNGEON_MOB_POOLS = {
@@ -218,9 +223,10 @@ def _roll_proc(member: DungeonMember, target: Mob, log: list) -> bool:
     return ptype == "dodge"
 
 
-def resolve_round(run: DungeonRun, player: Player) -> dict:
+def resolve_round(run: DungeonRun, player: Player, dodged: bool = False) -> dict:
     """
     Resolve one full combat round for the current room.
+    dodged=True means the player responded to a pending_telegraph in time.
     Returns a result dict consumed by the /dungeon/attack endpoint.
     """
     room = run.rooms[run.room_index]
@@ -231,11 +237,30 @@ def resolve_round(run: DungeonRun, player: Player) -> dict:
     taunt_active = False
 
     if not alive_mobs:
+        run.pending_telegraph = None  # clear any stale telegraph on room exit
         return {"run": run, "round_log": ["Room is already clear."],
                 "room_cleared": True, "run_cleared": run.room_index >= len(run.rooms) - 1,
                 "wiped": False, "xp_gained": 0, "gold_gained": 0}
 
     primary_mob = alive_mobs[0]
+
+    # ── 0. Resolve pending telegraph (before player attacks) ─────────────────
+    if run.pending_telegraph:
+        tel = run.pending_telegraph
+        if dodged:
+            round_log.append(f"  ☽ DODGED! {tel.name} misses you completely!")
+        else:
+            boss_mob = next((m for m in room.mobs if (m.is_named or m.is_elite) and m.hp > 0),
+                            room.mobs[0] if room.mobs else None)
+            if tel.is_oneshot:
+                player.hp = 0
+                round_log.append(f"  ☠ {tel.name}! Obliterates you instantly!")
+            else:
+                raw = boss_mob.damage if boss_mob else 50
+                dmg = max(1, int(raw * tel.damage_mult))
+                player.hp = max(0, player.hp - dmg)
+                round_log.append(f"  ⚡ {tel.name}! You take {dmg} massive damage!")
+        run.pending_telegraph = None
 
     # ── 1. Player attacks primary mob ────────────────────────────────────────
     atk_msgs, mob_dead = combat_engine.resolve_tick(player, primary_mob)
@@ -352,10 +377,33 @@ def resolve_round(run: DungeonRun, player: Player) -> dict:
             boss_mob.damage = int(boss_mob.damage * 1.4)
             round_log.append(f"  ⚡ {boss_mob.name} ENRAGES — damage +40%! Finish them!")
 
+    # ── 5b. Queue telegraph for next round if boss/elite still alive ─────────
+    if not run.pending_telegraph:
+        boss_mob = next((m for m in room.mobs if (m.is_named or m.is_elite) and m.hp > 0), None)
+        if boss_mob:
+            # Raid enrage: always telegraph (one-shot)
+            if run.boss_enraged:
+                run.pending_telegraph = PendingTelegraph(
+                    name=_TELEGRAPH_ENRAGE, damage_mult=1.0, is_oneshot=True, window_ms=3000)
+                round_log.append(f"  ⚠ {boss_mob.name} winds up {_TELEGRAPH_ENRAGE}! DODGE OR DIE!")
+            # Boss rooms: 30% chance to telegraph a heavy hit
+            elif boss_mob.is_named and random.random() < 0.30:
+                name = random.choice(_TELEGRAPH_BOSS)
+                run.pending_telegraph = PendingTelegraph(
+                    name=name, damage_mult=3.0, is_oneshot=False, window_ms=3000)
+                round_log.append(f"  ⚠ {boss_mob.name} winds up {name}! DODGE!")
+            # Elite mobs: 20% chance for a weaker telegraph
+            elif boss_mob.is_elite and not boss_mob.is_named and random.random() < 0.20:
+                name = random.choice(_TELEGRAPH_ELITE)
+                run.pending_telegraph = PendingTelegraph(
+                    name=name, damage_mult=2.0, is_oneshot=False, window_ms=3000)
+                round_log.append(f"  ⚠ {boss_mob.name} telegraphs {name}! DODGE!")
+
     # ── 6. Check room/run state ──────────────────────────────────────────────
     room_cleared = all(m.hp <= 0 for m in room.mobs)
     if room_cleared:
         room.cleared = True
+        run.pending_telegraph = None  # no telegraph carries into next room
 
     all_dead = player.hp <= 0 and all(not m.is_alive for m in run.party)
     player_dead = player.hp <= 0
