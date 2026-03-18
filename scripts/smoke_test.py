@@ -372,8 +372,27 @@ check("GET /describe/entity returns 200", r and r.status_code == 200)
 check("entity description returned", bool((r.json() if r else {}).get("description")))
 
 
-# ── 17. Cleanup ────────────────────────────────────────────────────────────────
-print("\n[17] Cleanup")
+# ── 17. Ascension gate (zone_number 1 → blocked) ─────────────────────────────
+print("\n[17] Ascension gate")
+r = req("post", f"/ascend/{player_id}")
+check("ascend blocked at zone_number 1 (non-200)", r and r.status_code != 200,
+      f"got {r.status_code if r else 'no response'}")
+
+# Verify /admin/force_ascend applies mult correctly
+r = req("post", f"/admin/force_ascend/{player_id}", params={"ascensions": 3})
+check("POST /admin/force_ascend returns 200", r and r.status_code == 200)
+if r and r.status_code == 200:
+    fa = r.json()
+    expected = round(1.15 ** 3, 4)
+    actual   = round(fa.get("ascension_damage_mult", 0), 4)
+    check(f"ascension_damage_mult ≈ ×{expected} after 3 ascensions",
+          abs(actual - expected) < 0.01,
+          f"got {actual}, expected {expected}")
+    check("ascension_count == 3", fa.get("ascension_count") == 3)
+    check("current_zone_number == 10 after force_ascend", fa.get("current_zone_number") == 10)
+
+# ── 18. Cleanup ────────────────────────────────────────────────────────────────
+print("\n[18] Cleanup")
 r = req("delete", f"/player/{player_id}")
 check("DELETE /player returns 200", r and r.status_code == 200)
 r2 = req("get", f"/player/{player_id}")

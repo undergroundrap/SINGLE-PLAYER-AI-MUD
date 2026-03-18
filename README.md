@@ -300,11 +300,33 @@ Proc fires after the player's hit resolves. If a proc kills the mob, the mob's c
 
 RuneScape-style accuracy formula:
 ```
-attacker_roll = random(1, attacker.level × 10)
-defender_roll = random(1, target.level × 8 + armor × 3)
-hit = attacker_roll > defender_roll
-damage = random(1, base_damage + weapon_stat_bonus)
+A = attacker.level × 10                        (attacker accuracy ceiling)
+D = target.level × 8  +  armor_stat × 3        (defender defense ceiling)
+
+attacker_roll = random(1, A)
+defender_roll = random(1, D)
+hit           = attacker_roll > defender_roll
+damage        = random(1, base_damage + weapon_stat_bonus)
 ```
+
+**Expected hit probability** (continuous approximation of the uniform-vs-uniform roll):
+
+```
+         ⎧ 1 − D / (2A)   if A ≥ D   (attacker advantage)
+P(hit) = ⎨
+         ⎩ A / (2D)       if A < D   (defender advantage)
+```
+
+Worked examples at key level pairs:
+
+| Attacker Lv | Target Lv | Armor | A | D | P(hit) |
+|---|---|---|---|---|---|
+| 1 (new player) | 1 (starter mob) | 0 | 10 | 8 | 1 − 8/20 = **60%** |
+| 10 | 10 (elite, armor 8) | 8 | 100 | 104 | 100/208 = **48%** |
+| 20 | 20 (raid boss) | 0 | 200 | 160 | 1 − 160/400 = **60%** |
+| 20 | 25 (over-level) | 12 | 200 | 236 | 200/472 = **42%** |
+
+The formula creates a natural soft cap: when A = D the hit rate is exactly 50%. Gear (armor stat) pushes D up, making the player's rolls harder to land — this is why upgraded weapons (which raise `base_damage` and therefore `A` indirectly via level progression) matter for hitting tougher content. The minimum-1 floor on both rolls prevents P(hit) = 0 at any level combination.
 - One tick = player attacks mob → class proc fires → (if mob alive and no dodge) mob counter-attacks → (if mob still alive) check telegraph queue
 - **Open-world telegraphs:** after the mob counter-attacks, named mobs have a 20% chance and elite mobs a 15% chance to queue a telegraph for the next round — see the Telegraph section in Dungeon & Raid System for full details
 - Equipment stats are summed via `_equipment_bonus(character, stat)`
@@ -772,8 +794,8 @@ python scripts/reset_data.py
 
 `scripts/smoke_test.py` runs a fast happy-path integration test (under 60 seconds) against a live backend. It covers every major system in order, creates a throwaway character, and deletes it when done.
 
-**What it checks (17 sections):**
-character creation → zone topology (hub/path/POI structure) → movement → harvest & fish (cooldowns + material slot) → combat (attack, cooldown 429, kill, XP) → patrol check → login/logout rested XP → player list/load → NPC talk → quest accept → vendor → sell junk → dungeon gate (blocked at level 1) → zone travel gate (blocked at low GS) → describe endpoints
+**What it checks (18 sections):**
+character creation → zone topology (hub/path/POI structure) → movement → harvest & fish (cooldowns + material slot) → combat (attack, cooldown 429, kill, XP) → patrol check → login/logout rested XP → player list/load → NPC talk → quest accept → vendor → sell junk → dungeon gate (blocked at level 1) → zone travel gate (blocked at low GS) → describe endpoints → ascension gate (blocked at zone 1) + `/admin/force_ascend` mult verification
 
 ```powershell
 # Terminal 1 — start the backend
