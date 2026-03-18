@@ -192,8 +192,8 @@ Raid       (level 20+,   → 10-player instanced, Epic/Legendary loot (2.8× sta
             GS ≥ 100)      7 rooms: trash → corridor → trash+elite → mini-boss
                                     → corridor → deep trash → final boss (enrage at 30%)
                            Clearing a raid pushes open-world zone level +3
-Zone Travel              → Requires 2 completed quests AND GS ≥ player.level × 50
-                           At level 20 = 1000 GS required (~2-3 raid clears with Epics)
+Zone Travel              → Requires 2 completed quests AND GS ≥ 1000 (fixed gate)
+                           ~2-3 raid clears with Epic/Legendary drops at level 20
                            Cannot travel on open-world drops alone — must do dungeons + raids
                            "★ ZONE CLEARED!" fires only when travel succeeds (real milestone)
 ```
@@ -202,7 +202,7 @@ This creates an infinite compounding loop: Open World → Dungeon → Raid → m
 
 **Gear Score** — shown live in the HUD stats panel. Calculated as the sum of all equipped item stat values × rarity multiplier (Common 1×, Rare 2.5×, Epic 4×, Legendary 7×). Raid entry is blocked until GS ≥ 100 with a clear message: *"Gear score too low (74/100). Farm dungeons first."* Once GS ≥ 100 the HUD shows `✓ RAID READY` in purple.
 
-**Zone travel GS gate** — `player.level × 50` GS required to advance. At level 20 (the first zone travel point) = 1000 GS. Dungeon grinding alone tops out around 500–600 GS — raids are required. The scrolling ticker always shows current GS vs required so the player knows exactly what to farm.
+**Zone travel GS gate** — fixed at **1000 GS**. Dungeon grinding alone tops out around 500–600 GS — raids are required. ~2-3 raid clears with Epic/Legendary drops at level 20 will hit 1000. The gate is intentionally fixed (not level-scaled) so it can't become an infinite treadmill as the player levels through raids. The scrolling ticker always shows current GS vs required so the player knows exactly what to farm.
 
 **Raid tier escalation:** Each raid cleared increments `player.raids_cleared`. The zone travel endpoint adds `raids_cleared × 3` to the generated zone level, so open-world content, dungeon mobs, and raid bosses all scale harder with every tier you complete.
 
@@ -573,7 +573,7 @@ All endpoints are in `backend/main.py`. Backend runs on `http://localhost:8000`.
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/zone/{zone_id}` | Fetch full zone state |
-| `POST` | `/zone/travel/{player_id}` | Generate + travel to new **open-world** zone. Params: `is_dungeon` (deprecated — use `/dungeon/enter`), `is_raid`. Zone level = `player.level + (raids_cleared × 3)` — escalates with each raid tier. Requires: (1) 2 completed quests in current zone, (2) GS ≥ `player.level × 50` (= 1000 at level 20). |
+| `POST` | `/zone/travel/{player_id}` | Generate + travel to new **open-world** zone. Params: `is_dungeon` (deprecated — use `/dungeon/enter`), `is_raid`. Zone level = `player.level + (raids_cleared × 3)` — escalates with each raid tier. Requires: (1) 2 completed quests in current zone, (2) GS ≥ 1000 (fixed gate — not level-scaled). |
 
 ### Actions
 | Method | Path | Description |
