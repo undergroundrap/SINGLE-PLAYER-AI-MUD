@@ -170,11 +170,13 @@ export default function Home() {
         const data = await res.json();
         if (data.patrol) {
           addLog(`⚠ A ${data.mob_name} (Lv ${data.mob_level}) crosses your path!`, "combat");
-          // Refresh zone using zone_id returned by backend (avoids stale player closure)
+          // Refresh zone so the mob appears in the action bar
           if (data.zone_id) {
             const zRes = await fetch(`http://localhost:8000/zone/${data.zone_id}`);
             if (zRes.ok) setZone(await zRes.json());
           }
+          // Force combat — player cannot ignore a patrol encounter
+          setAutoAttackTarget(data.mob_name.toLowerCase());
         }
       } catch { /* silent — patrol check is best-effort */ }
     }, 45000);
