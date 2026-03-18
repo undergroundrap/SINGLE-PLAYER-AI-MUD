@@ -2153,23 +2153,17 @@ export default function Home() {
           if (completedQuests.length === 0) {
             addLog("You have no completed quests to turn in.", "hint");
           } else {
+            const turnedInIds: string[] = [];
             for (const quest of completedQuests) {
               try {
                 const res = await fetch(`http://localhost:8000/quests/complete/${playerId}?quest_id=${quest.id}`, { method: 'POST' });
                 const data = await res.json();
                 if (data.success) {
+                  turnedInIds.push(quest.id);
                   data.messages.forEach((msg: string) => addLog(msg, "system"));
                   setPlayer((prev: any) => {
                     const newCompleted = [...(prev.completed_quest_ids || []), quest.id];
                     const remaining = prev.active_quests.filter((q: any) => q.id !== quest.id);
-                    // Check if this turn-in cleared all zone quests
-                    const zoneQuestIds = (zone?.quests || []).map((q: any) => q.id);
-                    const allCleared = zoneQuestIds.length > 0 &&
-                      zoneQuestIds.every((id: string) => newCompleted.includes(id) ||
-                        remaining.some((q: any) => q.id === id && q.is_completed));
-                    if (allCleared) {
-                      setTimeout(() => addLog("━━ Zone cleared! Type 'travel' or use the portal to move on. ━━", "system"), 100);
-                    }
                     // item_placement tells us where the item ended up: inventory | equipped | dropped
                     const placement = data.item_placement;
                     const updatedInv = placement === 'inventory' && data.item_reward
@@ -2198,6 +2192,14 @@ export default function Home() {
                 }
               } catch (err: any) {
                 addLog(`Turn-in Error: ${err.message}`, "error");
+              }
+            }
+            // Zone-cleared banner — checked once after all turn-ins complete
+            if (turnedInIds.length > 0) {
+              const allCompletedIds = new Set([...(player?.completed_quest_ids || []), ...turnedInIds]);
+              const zoneQuestIds = (zone?.quests || []).map((q: any) => q.id);
+              if (zoneQuestIds.length > 0 && zoneQuestIds.every((id: string) => allCompletedIds.has(id))) {
+                addLog("━━ Zone cleared! Type 'travel' or use the portal to move on. ━━", "system");
               }
             }
           }

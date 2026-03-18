@@ -981,7 +981,6 @@ async def talk_to_npc(player_id: str, npc_name: str):
     not_yet_active = [
         q for q in offered_quests
         if not any(aq.id == q.id for aq in player.active_quests)
-        and q.id not in player.completed_quest_ids
         # Don't re-offer explore quests for already-visited locations
         and not (q.quest_type == "explore" and q.target_id in player.explored_location_ids)
     ]
