@@ -709,7 +709,7 @@ Because the sim calls the exact same backend endpoints as the browser, it **is**
 |---|---|---|
 | Open world | Kill quests, harvest/fish, forage, level up | Level 10 reached |
 | Dungeon loop | Dungeon runs back-to-back (no open world sweeps) | GS ≥ 100 AND level 20 |
-| Raid loop | Run raids, attempt zone travel after each clear | Zone travel succeeds |
+| Raid loop | Run raids, attempt zone travel after each clear | Zone travel succeeds (GS ≥ 1000) |
 
 **Use the sim for:**
 - Verifying backend changes without touching the browser
@@ -734,10 +734,13 @@ python ..\scripts\sim_run.py
 # Quick smoke check — one sweep + one dungeon, then stop
 python ..\scripts\sim_run.py --quick
 
-# Skip Phase 1 entirely — instantly boost to level 10 with realistic mixed gear
-# (calls POST /admin/boost) then jump straight to the dungeon loop
-# Saves 35-50 min of open-world grind when testing dungeons/raids specifically
+# Skip Phase 1 — boost to lv10 ~94 GS, jump straight to dungeon loop
+# Saves ~35-50 min of open-world grind
 python ..\scripts\sim_run.py --skip-to-dungeon
+
+# Skip Phases 1+2 — boost to lv20 ~280 GS, jump straight to raid loop
+# Saves ~60-90 min — use this to test raids and zone travel directly
+python ..\scripts\sim_run.py --skip-to-raid
 
 # Keep the character after the run for manual inspection in-browser
 python ..\scripts\sim_run.py --no-cleanup
@@ -746,7 +749,27 @@ python ..\scripts\sim_run.py --no-cleanup
 python ..\scripts\sim_run.py --name BotWarrior --base http://localhost:8001
 ```
 
-Every log line is timestamped with seconds elapsed since sim start. Each section header shows how long the previous section took. The summary prints total wall time in seconds and minutes.
+Every log line is timestamped with seconds elapsed since sim start. Each section header shows how long the previous section took.
+
+**Milestone timeline** — the final summary always reprints every phase transition with its timestamp, regardless of how much the terminal scrolled. Example:
+
+```
+══════════════════════════════════════════════════════════════════
+  Total time: 923.4s (15.4 min)
+  ── Milestone Timeline ──────────────────────────────────
+  [00:00]  SKIPPED TO RAID — entering Phase 3              Lv20  GS   280  D=0  R=0
+  [02:31]  ZONE TRAVEL SUCCESS — Phase 3 Complete          Lv22  GS  1084  D=0  R=2
+══════════════════════════════════════════════════════════════════
+```
+
+Full-run example (no skip flags):
+```
+  [00:00]  PHASE 1 → 2: Open World Complete                Lv10  GS    94  D=0  R=0
+  [18:44]  PHASE 2 → 3: Dungeon Phase Complete             Lv20  GS   134  D=9  R=0
+  [31:07]  ZONE TRAVEL SUCCESS — Phase 3 Complete          Lv21  GS  1102  D=9  R=3
+```
+
+Columns: `[MM:SS]  event  Lv=player level  GS=gear score  D=dungeons cleared  R=raids cleared`
 
 **Reading the output — things to watch for:**
 
