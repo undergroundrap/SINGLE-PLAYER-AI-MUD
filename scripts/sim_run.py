@@ -721,9 +721,9 @@ def try_zone_travel(pid: str) -> bool:
         log(f"★ Zone travel → {new_zone.get('name','?')}", G)
         return True
     try:
-        detail = r.json().get("detail", r.text[:100]) if r else "no response"
+        detail = r.json().get("detail", r.text[:100]) if r is not None else "no response"
     except Exception:
-        detail = r.text[:100] if r else "no response"
+        detail = r.text[:100] if r is not None else "no response"
     log(f"  Zone travel blocked: {detail}", Y)
     return False
 

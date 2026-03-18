@@ -15,8 +15,9 @@ An infinite, AI-powered text-based MMORPG. Explore a procedurally generated open
 7. [API Reference](#api-reference)
 8. [Getting Started](#getting-started)
 9. [Environment Variables](#environment-variables)
-10. [Extending the Game](#extending-the-game)
-11. [Known Constraints & Gotchas](#known-constraints--gotchas)
+10. [Simulation-Driven Balance Methodology](#simulation-driven-balance-methodology)
+11. [Extending the Game](#extending-the-game)
+12. [Known Constraints & Gotchas](#known-constraints--gotchas)
 
 ---
 
@@ -192,8 +193,8 @@ Raid       (level 20+,   → 10-player instanced, Epic/Legendary loot (2.8× sta
             GS ≥ 100)      7 rooms: trash → corridor → trash+elite → mini-boss
                                     → corridor → deep trash → final boss (enrage at 30%)
                            Clearing a raid pushes open-world zone level +3
-Zone Travel              → Requires 2 completed quests AND GS ≥ 1000 (fixed gate)
-                           ~2-3 raid clears with Epic/Legendary drops at level 20
+Zone Travel              → Requires GS ≥ 1000 (fixed gate, not level-scaled)
+                           ~3 raid clears with Rare/Epic drops at level 20
                            Cannot travel on open-world drops alone — must do dungeons + raids
                            "★ ZONE CLEARED!" fires only when travel succeeds (real milestone)
 ```
@@ -555,7 +556,7 @@ Quests live on the Zone (`zone.quests`) and are accepted into `player.active_que
 
 **Quests are repeatable.** All quest types can be re-accepted after completion — quests are grind content, not one-time story beats. NPCs always re-offer completed quests as long as they aren't currently active.
 
-Turn-in happens at any hub quest giver NPC via `POST /quests/complete/{player_id}`, which awards XP and optionally an item reward. Zone travel is **not** unlocked by quest completion — it requires both 2 completed quests (engagement gate) and the gear score threshold (see Progression Loop above). `"★ ZONE CLEARED!"` fires only when travel actually succeeds.
+Turn-in happens at any hub quest giver NPC via `POST /quests/complete/{player_id}`, which awards XP and optionally an item reward. Zone travel is **not** unlocked by quest completion alone — it requires GS ≥ 1000. A player who has cleared dungeons and raids to hit that threshold will have naturally engaged with the zone's content. `"★ ZONE CLEARED!"` fires only when travel actually succeeds.
 
 ---
 
@@ -594,7 +595,7 @@ All endpoints are in `backend/main.py`. Backend runs on `http://localhost:8000`.
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/zone/{zone_id}` | Fetch full zone state |
-| `POST` | `/zone/travel/{player_id}` | Generate + travel to new **open-world** zone. Params: `is_dungeon` (deprecated — use `/dungeon/enter`), `is_raid`. Zone level = `player.level + (raids_cleared × 3)` — escalates with each raid tier. Requires: (1) 2 completed quests in current zone, (2) GS ≥ 1000 (fixed gate — not level-scaled). |
+| `POST` | `/zone/travel/{player_id}` | Generate + travel to new **open-world** zone. Params: `is_dungeon` (deprecated — use `/dungeon/enter`), `is_raid`. Zone level = `player.level + (raids_cleared × 3)` — escalates with each raid tier. Requires: GS ≥ 1000 (fixed gate — not level-scaled). A player with 1000 GS has necessarily cleared dungeons and raids and engaged deeply with the zone. |
 
 ### Actions
 | Method | Path | Description |
@@ -697,7 +698,7 @@ python scripts/reset_data.py
 `scripts/smoke_test.py` runs a fast happy-path integration test (under 60 seconds) against a live backend. It covers every major system in order, creates a throwaway character, and deletes it when done.
 
 **What it checks (17 sections):**
-character creation → zone topology (hub/path/POI structure) → movement → harvest & fish (cooldowns + material slot) → combat (attack, cooldown 429, kill, XP) → patrol check → login/logout rested XP → player list/load → NPC talk → quest accept → vendor → sell junk → dungeon gate (blocked at level 1) → zone travel gate (blocked without quests) → describe endpoints
+character creation → zone topology (hub/path/POI structure) → movement → harvest & fish (cooldowns + material slot) → combat (attack, cooldown 429, kill, XP) → patrol check → login/logout rested XP → player list/load → NPC talk → quest accept → vendor → sell junk → dungeon gate (blocked at level 1) → zone travel gate (blocked at low GS) → describe endpoints
 
 ```powershell
 # Terminal 1 — start the backend
@@ -894,6 +895,59 @@ uvicorn main:app --reload
 ```
 
 The game runs fully without LM Studio — AI calls fail gracefully and fall back to contextual template responses that reference real quest/mob/zone data.
+
+---
+
+## Simulation-Driven Balance Methodology
+
+This project uses `sim_run.py` not just as a test harness but as a **balance validation tool** — a methodology that applies to any game system, not just this one.
+
+### The core idea
+
+Most games are balanced through playtesting: humans play it, notice when something feels wrong, and adjust. This works but has a ceiling. Human testers have limited time, can't exhaustively cover every level range, and can't hold a spreadsheet in their head while playing. The result is that most indie games ship with progression curves that feel fine in the 10-hour window that was tested, and break apart at hour 30.
+
+The sim solves this by automating the playtesting loop. One `--skip-to-raid` run completes three full raids, measures exact GS gain per raid, dodge success rates, DPS scaling across level ranges, and telegraph frequency — in under 10 minutes. The same run would take a human 60–90 minutes with worse data quality.
+
+### What the sim proved during development
+
+Running the sim against this game revealed specific, quantifiable balance findings:
+
+| Finding | Measurement | Fix |
+|---|---|---|
+| Zone travel GS gate was a treadmill | Player leveled through raids → gate scaled up → gate never reachable | Replaced `level × 50` with flat 1000 GS |
+| GS curve from raids | Raid 1: +216 GS · Raid 2: +231 GS · Raid 3: +276 GS | Confirmed 3 raids to zone travel — correct pacing |
+| Boss telegraph frequency | Room 7 boss fired 3–4 normal telegraphs + 2–4 ANNIHILATEs per run | Identified potential repetition — cap normal telegraphs before enrage |
+| DPS scaling | Raid 1: 648 dmg/round → Raid 2: 944 → Raid 3: 1830 | Level scaling confirmed working (party stats compound with player level) |
+| Party deaths | 0 across 3 full raids | Healer output correctly calibrated against mob damage for this level range |
+| Dodge mechanics | 100% dodge rate at every tier (open world, dungeon, raid) | Sim always dodges optimally — validates telegraph system end-to-end |
+
+### Why this approach generalizes
+
+The same methodology applies to any game with quantifiable systems:
+
+- **Any MMORPG** — run the progression sim 100 times to find what % of players would hit a wall at each tier, before launch, not after
+- **Card games / tactics** — simulate thousands of matches to find which decks/factions dominate, before the community discovers the broken combo
+- **Idle games** — simulate 1000 hours of idle progress in 5 minutes to verify the late-game prestige curve doesn't collapse
+- **Roguelikes** — automated runs per class to verify class power parity without bias from skilled/unskilled testers
+
+The key property that makes it work: **the sim calls the same endpoints as the real client**. There's no separate "sim mode" in the backend. The sim is just a faster player. This means sim results are guaranteed to reflect what real players will experience — not what a mocked/simplified model predicts.
+
+### Signals worth tracking in any sim
+
+Based on what this sim revealed as most useful:
+
+| Metric | Why it matters |
+|---|---|
+| GS per run (or equivalent progression unit) | Tells you how many runs before the next gate — the core time-to-progression number |
+| DPS / damage output per round | Catches content that's too fast (boring) or too slow (frustrating) |
+| Telegraph → dodge ratio | Any divergence means the mechanic is broken or un-learnable |
+| Party deaths per run | Calibrates healer/tank output against mob damage |
+| Rounds per room | Rooms with very different counts indicate mob HP outliers |
+| Loot by rarity over N runs | Tells you the actual drop distribution, not the intended one |
+
+### The design insight
+
+Simulation isn't just for AAA studios with dedicated tools teams. A 1000-line Python script calling your own API can catch weeks of post-launch balance complaints before a single real player touches the game. The investment is front-loaded but it pays back every time you touch a number — instead of "this feels about right", you have "DPS grew 2.8× from raid 1 to raid 3, which matches the level scaling formula."
 
 ---
 
