@@ -672,6 +672,7 @@ character creation → zone topology (hub/path/POI structure) → movement → h
 ```powershell
 cd backend
 .\venv\Scripts\activate
+pip install requests  # first time only — not in requirements.txt
 # Backend must already be running in another terminal
 python ..\scripts\smoke_test.py
 # or against a different port:
@@ -698,6 +699,9 @@ Exits 0 on all checks passing, 1 on any failure. Run it after any backend change
 cd backend
 .\venv\Scripts\activate
 # Backend must already be running in another terminal
+
+# First time only — requests is not in requirements.txt (backend uses httpx)
+pip install requests
 
 # Default: grind to level 12, run dungeon, clean up
 python ..\scripts\sim_run.py
