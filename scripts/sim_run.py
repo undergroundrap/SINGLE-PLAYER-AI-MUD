@@ -61,7 +61,8 @@ W   = "\033[97m"
 DIM = "\033[2m"
 RST = "\033[0m"
 
-errors: list[str] = []
+errors:     list[str]  = []
+milestones: list[str]  = []   # collected for final summary
 _sim_start      = time.time()
 _section_start  = time.time()
 
@@ -80,14 +81,23 @@ def warn(msg: str) -> None:
 
 
 def milestone(title: str, pid: str) -> None:
-    """Print a loud phase-transition banner with current player stats."""
+    """Print a loud phase-transition banner and record it for the final summary."""
     p, gs = fresh_player(pid)
     elapsed = time.time() - _sim_start
+    mins, secs = divmod(int(elapsed), 60)
+
+    # Record a compact one-liner for the end-of-run summary
+    entry = (f"[{mins:02d}:{secs:02d}]  {title:45s}  "
+             f"Lv{p.get('level','?'):>3}  GS {gs:>5}  "
+             f"D={p.get('dungeons_cleared',0)}  R={p.get('raids_cleared',0)}")
+    milestones.append(entry)
+
+    # Full banner inline
     print(f"\n{M}{'█' * 64}{RST}")
     print(f"{M}  ★ MILESTONE: {title}{RST}")
     print(f"{M}  Lv{p.get('level','?')}  GS {gs}  "
           f"Dungeons {p.get('dungeons_cleared',0)}  Raids {p.get('raids_cleared',0)}  "
-          f"Gold {p.get('gold',0)}  [{elapsed:.0f}s elapsed]{RST}")
+          f"Gold {p.get('gold',0)}  [{mins:02d}:{secs:02d} elapsed]{RST}")
     eq = p.get("equipment", {})
     gear_lines = [
         f"    {slot:10} {item.get('name','?'):28} [{item.get('rarity','?'):9}] "
@@ -803,6 +813,12 @@ else:
 total = time.time() - _sim_start
 print(f"\n{M}{'═' * 64}{RST}")
 print(f"{M}  Total time: {total:.1f}s ({total / 60:.1f} min){RST}")
+
+if milestones:
+    print(f"{M}  ── Milestone Timeline ──────────────────────────────────{RST}")
+    for m in milestones:
+        print(f"{M}  {m}{RST}")
+
 if errors:
     print(f"{R}  {len(errors)} issue(s):{RST}")
     for e in errors:
