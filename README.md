@@ -12,14 +12,15 @@ An infinite, AI-powered text-based MMORPG. Explore a procedurally generated open
 4. [Quick Reference — What Lives Where](#quick-reference--what-lives-where)
 5. [Directory Structure & What Lives Where](#directory-structure--what-lives-where)
 6. [Key Systems — How They Work](#key-systems--how-they-work)
-7. [Data Models](#data-models)
-8. [API Reference](#api-reference)
-9. [Getting Started](#getting-started)
-10. [Environment Variables](#environment-variables)
-11. [Simulation-Driven Balance Methodology](#simulation-driven-balance-methodology)
-12. [Extending the Game](#extending-the-game)
-13. [Design Decisions](#design-decisions)
-14. [Known Constraints & Gotchas](#known-constraints--gotchas)
+7. [Math & Scaling Reference](#math--scaling-reference)
+8. [Data Models](#data-models)
+9. [API Reference](#api-reference)
+10. [Getting Started](#getting-started)
+11. [Environment Variables](#environment-variables)
+12. [Simulation-Driven Balance Methodology](#simulation-driven-balance-methodology)
+13. [Extending the Game](#extending-the-game)
+14. [Design Decisions](#design-decisions)
+15. [Known Constraints & Gotchas](#known-constraints--gotchas)
 
 ---
 
@@ -309,24 +310,7 @@ hit           = attacker_roll > defender_roll
 damage        = random(1, base_damage + weapon_stat_bonus)
 ```
 
-**Expected hit probability** (continuous approximation of the uniform-vs-uniform roll):
-
-```
-         ⎧ 1 − D / (2A)   if A ≥ D   (attacker advantage)
-P(hit) = ⎨
-         ⎩ A / (2D)       if A < D   (defender advantage)
-```
-
-Worked examples at key level pairs:
-
-| Attacker Lv | Target Lv | Armor | A | D | P(hit) |
-|---|---|---|---|---|---|
-| 1 (new player) | 1 (starter mob) | 0 | 10 | 8 | 1 − 8/20 = **60%** |
-| 10 | 10 (elite, armor 8) | 8 | 100 | 104 | 100/208 = **48%** |
-| 20 | 20 (raid boss) | 0 | 200 | 160 | 1 − 160/400 = **60%** |
-| 20 | 25 (over-level) | 12 | 200 | 236 | 200/472 = **42%** |
-
-The formula creates a natural soft cap: when A = D the hit rate is exactly 50%. Gear (armor stat) pushes D up, making the player's rolls harder to land — this is why upgraded weapons (which raise `base_damage` and therefore `A` indirectly via level progression) matter for hitting tougher content. The minimum-1 floor on both rolls prevents P(hit) = 0 at any level combination.
+See [Math & Scaling Reference → Hit Probability](#hit-probability) for the full derivation and worked examples across key level pairings.
 - One tick = player attacks mob → class proc fires → (if mob alive and no dodge) mob counter-attacks → (if mob still alive) check telegraph queue
 - **Open-world telegraphs:** after the mob counter-attacks, named mobs have a 20% chance and elite mobs a 15% chance to queue a telegraph for the next round — see the Telegraph section in Dungeon & Raid System for full details
 - Equipment stats are summed via `_equipment_bonus(character, stat)`
@@ -654,6 +638,190 @@ Quests live on the Zone (`zone.quests`) and are accepted into `player.active_que
 **Quests are repeatable.** All quest types can be re-accepted after completion — quests are grind content, not one-time story beats. NPCs always re-offer completed quests as long as they aren't currently active.
 
 Turn-in happens at any hub quest giver NPC via `POST /quests/complete/{player_id}`, which awards XP and optionally an item reward. Zone travel is **not** unlocked by quest completion alone — it requires GS ≥ 1000. A player who has cleared dungeons and raids to hit that threshold will have naturally engaged with the zone's content. `"★ ZONE CLEARED!"` fires only when travel actually succeeds.
+
+---
+
+## Math & Scaling Reference
+`backend/app/core/scaling_math.py · combat_engine.py · world_generator.py`
+
+All game numbers derive from four formulas. Every curve was validated by simulation — the sim confirmed these produce the intended pacing before any player touched the browser.
+
+---
+
+### HP Scaling
+```
+max_hp(L) = int( 100 × 1.15^(L−1)  +  L × 10 )
+```
+The exponential term gives compound growth; the linear term keeps early levels feeling meaningful. Class multiplier applied after.
+
+| Level | Base HP | Warrior ×1.20 | Mage ×0.80 |
+|---|---|---|---|
+| 1 | 110 | 132 | 88 |
+| 5 | 224 | 268 | 179 |
+| 10 | 451 | 541 | 360 |
+| 20 | 1,623 | 1,947 | 1,298 |
+| 50 | 94,731 | 113,677 | 75,784 |
+| 100 | 102,115,213 | 122,538,255 | 81,692,170 |
+
+At level 100 a Warrior has 122 million HP — displayed as `122.5M` by the frontend formatter. This is intentional: ascension players at level 100 cycle 100 are dealing billions of damage per hit.
+
+---
+
+### Damage Scaling
+```
+damage(L) = int( 10 × 1.15^(L−1)  +  L × 2 )
+```
+Same exponential base as HP, calibrated so damage/HP ratio stays roughly constant — fights don't get shorter or longer as players level, they stay at the same ~8-hit pace.
+
+| Level | Base DMG | Rogue ×1.20 | Mage ×1.30 | Priest ×0.85 |
+|---|---|---|---|---|
+| 1 | 12 | 14 | 15 | 10 |
+| 5 | 27 | 32 | 35 | 22 |
+| 10 | 55 | 66 | 71 | 46 |
+| 20 | 182 | 218 | 236 | 154 |
+| 50 | 9,523 | 11,427 | 12,379 | 8,094 |
+| 100 | 10,211,621 | 12,253,945 | 13,275,107 | 8,679,877 |
+
+---
+
+### XP Curve
+```
+xp_required(L) = 100 × L × (L + 1)
+
+xp_per_kill    = xp_required(mob.level) // 8
+```
+The polynomial curve keeps the per-level XP requirement readable at any level (no scientific notation needed for the XP bar). The `// 8` constant on mob XP is the core design constraint: **you always need ~8 kills to level up**, regardless of whether you're level 1 or level 100. Elites give 2× XP; named mobs give 4×.
+
+| Level | XP Required | XP per Kill | Kills to Level |
+|---|---|---|---|
+| 1 | 200 | 25 | ~8 |
+| 5 | 3,000 | 375 | ~8 |
+| 10 | 11,000 | 1,375 | ~8 |
+| 20 | 42,000 | 5,250 | ~8 |
+| 50 | 255,000 | 31,875 | ~8 |
+| 100 | 1,010,000 | 126,250 | ~8 |
+
+The `max(player.level, mob.level)` rule in the XP calculation means you always earn XP based on the harder of the two levels — grinding low-level mobs never yields diminishing returns. This keeps the open world viable as a catch-up mechanism at any point in the game.
+
+---
+
+### Hit Probability
+```
+A = attacker.level × 10                       (accuracy ceiling)
+D = target.level × 8  +  armor_stat × 3       (defense ceiling)
+
+attacker_roll = random(1, A)
+defender_roll = random(1, D)
+hit           = attacker_roll > defender_roll
+```
+
+Expected probability (continuous approximation):
+```
+         ⎧ 1 − D / (2A)   if A ≥ D
+P(hit) = ⎨
+         ⎩ A / (2D)       if A < D
+```
+
+| Scenario | A | D | P(hit) |
+|---|---|---|---|
+| Lv1 vs Lv1 starter mob (no armor) | 10 | 8 | 60% |
+| Lv10 vs Lv10 elite (armor stat 8) | 100 | 104 | 48% |
+| Lv20 vs Lv20 raid boss (no armor) | 200 | 160 | 60% |
+| Lv20 vs Lv25 over-level (armor 12) | 200 | 236 | 42% |
+
+Equal-level fights land at 60% — comfortable but not trivial. Armor matters: each point of armor adds 3 to the defender's ceiling, pushing hit rate down. The formula has no hard floor — a sufficiently armored enemy at a much higher level can make your attacks miss more than half the time, which is the intended "too strong for you" signal.
+
+---
+
+### Gear Score
+```
+GS = Σ (over all 7 equipped slots)  sum(item.stats.values()) × rarity_mult
+
+Rarity multipliers:  Common 1.0 · Uncommon 1.5 · Rare 2.5 · Epic 4.0 · Legendary 7.0
+Item stat value    = int( mob_level × rarity_stat_mult )
+```
+
+The rarity multiplier appears **twice** — once when the item's stat value is rolled (higher rarity = higher stat), and again when GS is calculated (higher rarity = multiplied more). A Legendary item from a level 20 boss isn't just 7× better in stats — it compounds to nearly 49× the GS contribution of a Common item from the same mob.
+
+| Source | Rarity | Item stat | GS contribution |
+|---|---|---|---|
+| Lv1 starter (Common) | Common | 1 | 1 |
+| Lv10 dungeon | Uncommon | 15 | 22 |
+| Lv10 dungeon | Rare | 25 | 62 |
+| Lv10 dungeon | Epic | 40 | 160 |
+| Lv20 raid normal | Rare | 50 | 125 |
+| Lv20 raid normal | Epic | 80 | 320 |
+| Lv20 raid boss | Legendary | 140 | 980 |
+
+**What GS 1000 looks like in practice:** a mix of level-20 raid drops — roughly 2 Epics + 3 Rares + 2 Uncommons across your 7 slots. One lucky Legendary from the raid boss alone nearly hits the gate (980 GS). The sim confirmed 3–5 raid clears to reach 1000 GS reliably.
+
+---
+
+### Loot Drop Rates
+```
+effective_chance = min(1.0, base_chance × tier_boost)
+
+Tier boosts:  open world 1.0×  ·  dungeon 1.6×  ·  raid 2.8×
+```
+
+Rarities are checked **best-to-worst** — the first entry that passes its roll is returned. This means the tier boost raises the floor of *quality*, not just volume. Common is always last so it never blocks higher rarities.
+
+**Normal mob drop table (per check, not per kill — nothing drops if all checks fail):**
+
+| Rarity | Base | Dungeon (×1.6) | Raid (×2.8) |
+|---|---|---|---|
+| Epic | 2% | 3.2% | 5.6% |
+| Rare | 8% | 12.8% | 22.4% |
+| Uncommon | 20% | 32% | 56% |
+| Common | 40% | 64% | 100% (capped) |
+| No drop | ~40% | ~5% | 0% |
+
+**Named boss (guaranteed Rare minimum):**
+
+| Rarity | Chance |
+|---|---|
+| Legendary | 10% |
+| Epic | 40% |
+| Rare | 100% (fallback — always fires if Legendary and Epic both missed) |
+
+**Elite mob:**
+
+| Rarity | Chance |
+|---|---|
+| Epic | 8% |
+| Rare | 35% |
+| Uncommon | 80% |
+
+---
+
+### Zone Difficulty & Ascension Mult
+```
+zone_difficulty_mult  = 1.0 + (zone_number − 1) × 0.2     (Zone 1–10 per ascension arc)
+ascension_damage_mult = 1.15 ^ ascension_count              (compounds permanently)
+
+effective_player_damage = player.damage × ascension_damage_mult
+effective_mob_hp        = base_mob_hp   × zone_difficulty_mult
+```
+
+These two scalars interact directly: the zone wall gets harder as you push deeper, and the ascension multiplier compounds to overcome it. Applied via temporary combat copies — neither value is ever persisted back to the DB.
+
+| Zone | Mob HP/DMG mult | Ascensions needed to match |
+|---|---|---|
+| 1 | 1.0× | 0 (baseline) |
+| 5 | 1.8× | ~4 (×2.01 at ascension 5) |
+| 10 | 2.8× | ~9 (×3.52 at ascension 9) |
+
+**Ascension multiplier at key counts:**
+
+| Ascensions | ×DMG | Effect |
+|---|---|---|
+| 1 | ×1.15 | Marginal edge on Zone 10 |
+| 5 | ×2.01 | Mid-arc clears noticeably faster |
+| 10 | ×4.05 | Zone 10 wall effectively removed |
+| 20 | ×16.37 | Full arc is a speed-run |
+| 50 | ×1,083 | Zone 10 takes minutes |
+| 100 | ×1,174,313 | Zone 1 mobs evaporate in one hit |
+| 200 | ×1.38 trillion | Numbers require scientific notation |
 
 ---
 
