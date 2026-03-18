@@ -66,6 +66,7 @@ export default function Home() {
   const [worldInput, setWorldInput] = useState<string>("");
   const [target, setTarget] = useState<any>(null);
   const [targetDescription, setTargetDescription] = useState<string>('');
+  const [levelUpFlash, setLevelUpFlash] = useState<boolean>(false);
   const [combatFlash, setCombatFlash] = useState<boolean>(false);
   const [activeLoot, setActiveLoot] = useState<any>(null);
   const [isTalking, setIsTalking] = useState<boolean>(false);
@@ -1017,7 +1018,7 @@ export default function Home() {
                       else addLog(`🎒 ${item.name} (${item.rarity}) dropped!`, 'system');
                     });
                   }
-                  if (data.leveled_up) addLog(`⬆ LEVEL UP! Now level ${data.player_level}!`, 'system');
+                  if (data.leveled_up) { addLog(`⬆ LEVEL UP! Now level ${data.player_level}!`, 'system'); setLevelUpFlash(true); }
                   if (data.wiped) {
                     addLog('☠ Your party was wiped. Retreating...', 'error');
                     await fetch(`http://localhost:8000/dungeon/flee/${dungeonRun.id}?player_id=${playerId}`, { method: 'POST' }).catch(() => {});
@@ -1970,6 +1971,7 @@ export default function Home() {
             });
             // Progression milestone hints on level-up
             if (data.player_level && data.player_level !== player?.level) {
+              setLevelUpFlash(true);
               const delay = data.messages.length * 250 + 100;
               if (data.player_level === 10) {
                 setTimeout(() => addLog("⚑ DUNGEONS UNLOCKED — type 'travel dungeon' or use the sidebar to enter.", "hint"), delay);
@@ -2821,7 +2823,10 @@ export default function Home() {
           {dungeonRun
             ? renderDungeonTheater()
             : (
-              <div className={`glass-panel terminal-wrapper flex-1${autoAttackTarget ? ' combat-pulse' : isGathering ? ' gather-pulse' : ''}`}>
+              <div
+                className={`glass-panel terminal-wrapper flex-1${levelUpFlash ? ' levelup-flash' : autoAttackTarget ? ' combat-pulse' : isGathering ? ' gather-pulse' : ''}`}
+                onAnimationEnd={() => setLevelUpFlash(false)}
+              >
                 <div className="terminal-output" ref={scrollRef}>
                   {logs.map((log, i) => (
                     <div key={i} className={`terminal-line log-${log.type}`}>

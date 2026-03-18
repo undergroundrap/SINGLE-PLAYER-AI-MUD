@@ -473,6 +473,16 @@ body.combat-flash {
   height: 100%;
 }
 
+@keyframes levelup-flash {
+  0%   { border-color: #a335ee; box-shadow: 0 0 24px 6px rgba(163, 53, 238, 0.7); }
+  60%  { border-color: #c084fc; box-shadow: 0 0 40px 10px rgba(192, 132, 252, 0.5); }
+  100% { border-color: #1a1a1c; box-shadow: none; }
+}
+
+.levelup-flash {
+  animation: levelup-flash 1.6s ease-out forwards;
+}
+
 @keyframes combat-border-pulse {
   0%, 100% { border-color: #1a1a1c; }
   50%       { border-color: #8b0000; }
