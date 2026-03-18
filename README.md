@@ -881,4 +881,18 @@ A score-screen shown on zone exit / tab close: kills this session, gold earned, 
 
 ---
 
+## Spin-off Concept: Terminal Idle Game
+
+The headless simulation (`sim_run.py`) already plays the full meta automatically — open world sweeps, dungeon runs, raids, zone travel — and prints a live colourised feed of everything that happens. It turns out this is a genuinely enjoyable thing to watch while doing something else, like reading or watching YouTube.
+
+The natural extension of this is a **standalone terminal idle game**: a separate project that takes `sim_run.py` as its foundation and turns it into the actual product. The player's role shifts from playing to **directing and watching** — you pick your class, set some preferences (aggressive/cautious, gold-focused/XP-focused), and then watch a rich terminal feed narrate your character's adventure while you idle. World chat would be the primary interaction point — you can message your sim party, react to drops, or just lurk while the game plays out.
+
+What makes it potentially unique: most idle games are number dashboards. This would be a **narrative idle game** — every kill has a description, every dungeon room tells a story, every rare drop gets called out. The AI layer that makes this MUD feel alive is exactly what would make an idle version feel different from Progress Quest or any clicker.
+
+Since the backend is already completely decoupled from the frontend, this would be a **separate repo** that reuses the same backend as-is and replaces the Next.js frontend with an enhanced terminal renderer — likely a Python `rich` or `textual` UI that displays party HP bars, a scrolling combat log, and a world chat input, all in the terminal.
+
+The sim as it exists today is already ~80% of the way there technically. The gap is just the UI layer and the shift in design intent from "testing tool" to "product."
+
+---
+
 *Built by Ocean Bennett*
