@@ -690,15 +690,23 @@ Exits 0 on all checks passing, 1 on any failure. Run it after any backend change
 
 ### Headless Simulation (`sim_run.py`)
 
-`scripts/sim_run.py` plays the full game loop automatically — no browser, no clicking. It creates a character, grinds through open-world combat, exercises paths/harvest/fish/quests, enters and completes a dungeon, then cleans up. Useful for verifying end-to-end behavior after large changes, or if you want to watch the loop play out and check that numbers feel right.
+`scripts/sim_run.py` plays the **full progression meta** automatically — no browser, no clicking. It follows the same optimal loop a knowledgeable player would: talk to NPCs → accept all quests → harvest/fish every path → kill all mobs at each POI → forage when a quest targets the location → turn in at hub → sell junk → rebuy potions → repeat. It drives through all three content tiers before stopping.
 
-**What it exercises:**
-- Zone generation (AI calls fire naturally — mob/location descriptions, ambiance)
-- Hub → path navigation, harvest + fish, sell junk
-- Combat grind loop with quest accept/turn-in cycling
-- Auto-equip, loot drops, level-ups
-- Dungeon entry gate, 3-room dungeon run with AI party, loot collection
-- Zone travel gate check (shows the GS block message if threshold not met)
+Because the sim calls the exact same backend endpoints as the browser, it **is** the real game — the backend doesn't know whether the caller is Next.js or a Python script. Combat math, XP gains, loot rolls, quest tracking, dungeon party AI, and level-up logic are all identical. The only thing the sim skips is frontend rendering.
+
+**Three-phase meta loop:**
+
+| Phase | Goal | Stops when |
+|---|---|---|
+| Open world | Kill quests, harvest/fish, forage, level up | Level 10 reached |
+| Dungeon loop | Alternate dungeon runs + open world sweeps | GS ≥ 100 AND level 20 |
+| Raid loop | Run raids, attempt zone travel after each clear | Zone travel succeeds |
+
+**Use the sim for:**
+- Verifying backend changes without touching the browser
+- Checking balance — XP curve, kill counts per level-up, loot drop rates, GS progression
+- Catching regressions after any change to `main.py`, `dungeon_engine.py`, or `scaling_math.py`
+- Watching the loop play out and checking that numbers feel right
 
 ```powershell
 # Terminal 1 — start the backend
@@ -711,11 +719,11 @@ cd backend
 .\venv\Scripts\activate
 pip install requests  # first time only — not in requirements.txt (backend uses httpx)
 
-# Default: grind to level 12, run dungeon, clean up
+# Full meta run (open world → dungeons → raids → zone travel)
 python ..\scripts\sim_run.py
 
-# Grind deeper (e.g. to attempt zone travel)
-python ..\scripts\sim_run.py --target-level 15
+# Quick smoke check — one sweep + one dungeon, then stop
+python ..\scripts\sim_run.py --quick
 
 # Keep the character after the run for manual inspection in-browser
 python ..\scripts\sim_run.py --no-cleanup
@@ -724,22 +732,24 @@ python ..\scripts\sim_run.py --no-cleanup
 python ..\scripts\sim_run.py --name BotWarrior --base http://localhost:8001
 ```
 
-The sim prints a colourized live feed — you can watch level-ups, loot drops, dungeon room clears, and party actions in real time. A default run (target level 12) takes roughly 3–5 minutes depending on mob HP and cooldowns.
+Every log line is timestamped with seconds elapsed since sim start. Each section header shows how long the previous section took. The summary prints total wall time in seconds and minutes.
 
 **Reading the output — things to watch for:**
 
 | Signal | What it means |
 |---|---|
-| `✗ FATAL` / red lines | Hard error — endpoint returned unexpected status, request failed entirely |
-| `Party wiped!` in red | Dungeon wipe — party may be undertuned for the zone level, or damage scaling is off |
-| Level-ups happening very fast or very slow | XP curve may have drifted — check `ScalingMath.get_xp_required` |
-| `Sold 0 junk items` after harvest+fish | Material items not landing in inventory, or `slot=material` check in sell_junk broken |
-| `Dungeon entry blocked` unexpectedly | Level gate check in `/dungeon/enter` may be too strict or the player level didn't persist |
-| `Loot: []` on dungeon clear | Loot roll isn't firing on run cleared — check `_roll_loot` in `dungeon_engine.py` |
-| No path locations found | Zone topology broke — path insertion in `world_generator.py` didn't run for this zone type |
-| Grind loop hits "too many respawn waits" | Respawn timer too long, or mobs aren't re-generating after wipe |
+| Red `✗` lines | Hard error — endpoint returned unexpected status or request failed |
+| `Party wiped!` | Dungeon party undertuned for zone level, or damage scaling off |
+| Level-ups very fast or very slow | XP curve drifted — check `ScalingMath.get_xp_required` |
+| `Sold 0 junk` after harvest+fish | Material items not reaching inventory, or `sell_junk` slot filter broken |
+| `Dungeon entry failed` unexpectedly | Level gate in `/dungeon/enter` too strict, or player level not persisting |
+| `Loot: []` on dungeon/raid clear | `_roll_loot` not firing — check `dungeon_engine.py` |
+| No path locations | World generator path insertion broke for this zone type |
+| `Too many empty sweeps` | Mob respawn timer too long or respawn logic broken |
+| `Hit dungeon cap` without reaching GS 100 | Dungeon loot not scaling GS fast enough — check loot tier multipliers |
+| `Hit raid cap` without zone travel | Raid loot not pushing GS over zone travel threshold |
 
-If something looks off, paste the full terminal output and it's easy to spot where the loop went wrong.
+If something looks off, paste the full terminal output — the timestamps make it easy to spot where time is being spent unexpectedly.
 
 ### What gets deleted per operation
 | Operation | Deletes |
