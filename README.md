@@ -432,6 +432,45 @@ The top-of-screen ticker scrolls 6 information slots continuously. The last two 
 
 This means a brand-new player always knows what to do next without reading a guide. The ticker is the tutorial.
 
+### Dynamic Action Bar & Number Hotkeys
+
+The bottom toolbar is a **real-time contextual action bar** — its buttons and their assigned numbers rebuild every time the world state changes. Button order is always deterministic:
+
+```
+1       → Look
+2…N     → Exits (one per available direction)
+N+1…   → Attack buttons (one per unique alive mob type at current location)
+…       → Turn In (only when quest giver is present + quests completed)
+…       → Talk (one per quest-giver NPC at location)
+…       → Shop / Sell (when vendor is present; Sell only if inventory non-empty)
+…       → Gather (only when an active forage quest targets the current location)
+…       → Quests, Bags, Who
+?       → Help (always last, always ?)
+```
+
+**Number hotkeys work two ways:**
+
+| Method | How it works |
+|---|---|
+| Press digit with empty input | Fires the action immediately — no Enter needed |
+| Type digit + Enter | Resolves the same map and executes the command |
+
+**Context-awareness examples:**
+- At a hub with a quest giver and vendor: Talk might be `4`, Shop `5`, Quests `6`
+- In a combat area with two mob types: `attack Boar` = `3`, `attack Spider` = `4`, Quests shifts to `5`
+- When a forage quest is active at your location: Gather appears before Quests, shifting everything after it
+- While gathering is in progress: the Gather button is disabled — pressing its number does nothing
+- Typing a number into the command box mid-sentence is safe — hotkeys only fire when the input is blank
+
+The hotbar action map is maintained in a `hotbarActionsRef` (a `useRef<Map<number, () => void>>`) that is rebuilt via `useEffect` whenever zone, player, combat target, or gathering state changes. This keeps the keydown handler stateless and free from stale closure bugs.
+
+**Visual feedback:**
+- The terminal border pulses **red** while in combat (`autoAttackTarget` is set)
+- The terminal border pulses **gold** while gathering (`isGathering` is true)
+- Attack buttons show a draining red cooldown overlay during auto-attack
+- Gather button shows a draining green overlay during the 8s gather cooldown
+- The target frame (top-right, same position as the enemy HP bar) shows a yellow gather progress bar with a live countdown timer when foraging
+
 ### Minimap
 
 The minimap radar (top of the right panel) shows live entity state for your current location:

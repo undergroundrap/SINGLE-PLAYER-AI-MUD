@@ -103,6 +103,7 @@ export default function Home() {
   const seenEntities = useRef<Set<string>>(new Set());
   const entityDescCache = useRef<Map<string, string>>(new Map());
   const seenWorldMessages = useRef<Set<string>>(new Set());
+  const hotbarActionsRef = useRef<Map<number, () => void>>(new Map());
   const isInCombatRef = useRef(false); // kept in sync with autoAttackTarget
   const idleChatAbortRef = useRef<AbortController | null>(null); // aborted on mob kill to free LM Studio
   const chatMsgCountRef = useRef(0);
@@ -135,20 +136,27 @@ export default function Home() {
     return () => clearTimeout(t);
   }, [step]);
 
-  // Redirect any keypress back to the input if something else stole focus
+  // Redirect any keypress back to the input if something else stole focus.
+  // Number keys 1–9 fire the corresponding hotbar action when the input is empty.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      // Hotbar number shortcuts — only in game, only when input is blank
+      if (step === 'game' && /^[1-9]$/.test(e.key)) {
+        const currentVal = inputRef.current?.value ?? '';
+        if (currentVal === '') {
+          const action = hotbarActionsRef.current.get(parseInt(e.key));
+          if (action) { e.preventDefault(); action(); return; }
+        }
+      }
       const active = document.activeElement;
       if (active === inputRef.current) return;
       if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return;
-      // Only redirect printable keys (ignore modifier-only, F-keys, etc.)
-      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        inputRef.current?.focus();
-      }
+      if (e.key.length === 1) inputRef.current?.focus();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [step]);
 
   // ── Patrol encounter timer ──────────────────────────────────────────────
   // Every 45s, ask the backend if a wandering enemy has appeared.
@@ -368,6 +376,52 @@ export default function Home() {
     }
   }, [step, playerId, player?.current_zone_id]);
 
+  // Hotbar action map — rebuilt whenever toolbar contents change
+  useEffect(() => {
+    const hb = new Map<number, () => void>();
+    const loc = zone?.locations?.find((l: any) => l.id === player?.current_location_id);
+    const exits = loc?.exits || {};
+    const nowTs = Date.now() / 1000;
+    let idx = 1;
+
+    hb.set(idx++, () => executeCommand('look'));
+
+    Object.entries(exits).forEach(([dir]) => {
+      hb.set(idx++, () => executeCommand(`go ${dir}`));
+    });
+
+    const aliveMobs = (loc?.mobs || []).filter((m: any) => !m.respawn_at || m.respawn_at <= nowTs);
+    const aliveMobNames = ([...new Set(aliveMobs.map((m: any) => m.name))] as string[]);
+    aliveMobNames.forEach(name => {
+      const isActive = autoAttackTarget === name.toLowerCase();
+      hb.set(idx++, () => isActive ? setAutoAttackTarget(null) : executeCommand(`attack ${name}`));
+    });
+
+    const completedQuests = (player?.active_quests || []).filter((q: any) => q.is_completed);
+    const hasQuestGiver = loc?.npcs?.some((n: any) => n.role === 'quest_giver');
+    if (hasQuestGiver && completedQuests.length > 0) hb.set(idx++, () => executeCommand('turn in'));
+
+    (loc?.npcs || []).filter((n: any) => n.role === 'quest_giver').forEach((n: any) => {
+      hb.set(idx++, () => executeCommand(`talk to ${n.name}`));
+    });
+
+    (loc?.npcs || []).filter((n: any) => n.role === 'vendor').forEach(() => {
+      hb.set(idx++, () => executeCommand('shop'));
+      if ((player?.inventory || []).length > 0) hb.set(idx++, () => executeCommand('sell'));
+    });
+
+    const hasForage = (player?.active_quests || []).some((q: any) =>
+      q.quest_type === 'forage' && q.target_id === player?.current_location_id && !q.is_completed
+    );
+    if (hasForage) hb.set(idx++, () => executeCommand('gather'));
+
+    hb.set(idx++, () => executeCommand('quests'));
+    hb.set(idx++, () => executeCommand('inventory'));
+    hb.set(idx++, () => executeCommand('who'));
+
+    hotbarActionsRef.current = hb;
+  }, [zone, player, autoAttackTarget, isGathering]);
+
   // World Chat Auto-Scroll
   useEffect(() => {
     if (chatScrollRef.current) {
@@ -463,22 +517,6 @@ export default function Home() {
     return () => window.removeEventListener('beforeunload', handleUnload);
   }, [playerId]);
 
-  // Action Keybinds [1-9]
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return;
-      if (step !== 'game') return;
-
-      const key = /^[1-9]$/.test(e.key) ? e.key : e.key === '?' ? '?' : null;
-      if (key) {
-        const cmd = getToolbarActions()[key];
-        if (cmd) executeCommand(cmd);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [step, zone, player]);
 
   const addLog = (text: string, type: 'system' | 'player' | 'hint' | 'combat' | 'error') => {
     // Auto-detect hint patterns in strings
@@ -1333,6 +1371,11 @@ export default function Home() {
       actions[String(idx++)] = 'shop';
       if ((player?.inventory || []).length > 0) actions[String(idx++)] = 'sell';
     });
+
+    const hasForage = (player?.active_quests || []).some((q: any) =>
+      q.quest_type === 'forage' && q.target_id === player?.current_location_id && !q.is_completed
+    );
+    if (hasForage) actions[String(idx++)] = 'gather';
 
     actions[String(idx++)] = 'quests';
     actions[String(idx++)] = 'inventory';
@@ -3228,7 +3271,6 @@ export default function Home() {
             const loc = zone?.locations?.find((l: any) => l.id === player?.current_location_id);
             const exits = loc?.exits || {};
             const nowTs = Date.now() / 1000;
-
             // Unique alive mob names sorted: regular → elite → named
             const aliveMobs = (loc?.mobs || []).filter((m: any) => !m.respawn_at || m.respawn_at <= nowTs);
             const mobRank = (name: string) => {
