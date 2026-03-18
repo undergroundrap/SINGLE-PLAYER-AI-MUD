@@ -1002,22 +1002,46 @@ export default function Home() {
     const vendorHere = currentLoc2?.npcs?.some((n: any) => n.role === 'vendor');
     const questGiverHere = currentLoc2?.npcs?.some((n: any) => n.role === 'quest_giver');
 
+    // Derive next-step guidance based on exact loop stage
+    const lvl = player?.level || 1;
+    const gs = gearScore ?? 0;
+    const zoneMaxLvl = Math.max(...(zone?.level_range || [1, 5]));
+    const requiredGs = zoneMaxLvl * 25;
+    let progressSlot: string;
+    let nextStepSlot: string;
+
+    if (lvl < 10) {
+      progressSlot = `GS: ${gs} — LEVEL ${lvl} / 10 NEEDED FOR DUNGEONS`;
+      nextStepSlot = `LOOP: GRIND QUESTS → REACH LEVEL 10 → ENTER DUNGEONS`;
+    } else if (lvl < 20) {
+      progressSlot = `GS: ${gs} / ${requiredGs} REQUIRED — LEVEL ${lvl} / 20 NEEDED FOR RAIDS`;
+      nextStepSlot = gs >= requiredGs
+        ? `✓ GS MET — REACH LEVEL 20 TO UNLOCK RAIDS THEN TYPE 'TRAVEL'`
+        : `LOOP: RUN DUNGEONS → BUILD GEAR SCORE → UNLOCK RAIDS AT LEVEL 20`;
+    } else if (gs < requiredGs) {
+      progressSlot = `GS: ${gs} / ${requiredGs} REQUIRED TO ADVANCE`;
+      nextStepSlot = `LOOP: FARM RAIDS FOR EPIC GEAR → HIT ${requiredGs} GS → TYPE 'TRAVEL' TO ADVANCE`;
+    } else {
+      progressSlot = `✓ GS: ${gs} / ${requiredGs} — ZONE COMPLETE`;
+      nextStepSlot = `ZONE CLEARED — TYPE 'TRAVEL' TO ADVANCE TO THE NEXT CHALLENGE`;
+    }
+
     const tickerMessages = [
       `ATMOSPHERE: ${weather.toUpperCase()} — ${timeStr.toUpperCase()} ${weatherIcons[weather] || "☀️"}`,
       zone?.name ? `ZONE: ${zone.name.toUpperCase()} — ${currentLoc2?.name?.toUpperCase() || ''}` : "EXPLORING THE REALM",
       nearbyMobCount > 0
         ? `⚔ DANGER NEARBY: ${nearbyMobCount} CREATURE${nearbyMobCount > 1 ? 'S' : ''} IN THIS AREA — STAY ALERT`
         : "✓ THIS AREA IS CLEAR — SAFE TO REST",
-      activeQuest
-        ? `📜 ACTIVE: ${activeQuest.title.toUpperCase()} — ${activeQuest.current_progress}/${activeQuest.target_count} ${(activeQuest.collect_name || activeQuest.target_id).toUpperCase()}S`
-        : "TIP: TALK TO QUEST GIVERS TO BEGIN YOUR CHRONICLES 💡",
       completedCount > 0
         ? `★ ${completedCount} QUEST${completedCount > 1 ? 'S' : ''} READY TO TURN IN — RETURN TO THE HUB`
-        : vendorHere ? "🛒 MERCHANT NEARBY — TYPE 'SHOP' TO BROWSE WARES" : questGiverHere ? "! QUEST GIVER HERE — TYPE 'TALK TO [NAME]'" : "TIP: TYPE 'LOOK' TO SURVEY YOUR SURROUNDINGS",
-      `LEVEL ${player?.level || 1} ${player?.race?.toUpperCase() || 'ADVENTURER'} — ${player?.kills || 0} KILLS — ${player?.gold || 0} GOLD`,
+        : activeQuest
+          ? `📜 ACTIVE: ${activeQuest.title.toUpperCase()} — ${activeQuest.current_progress}/${activeQuest.target_count} ${(activeQuest.collect_name || activeQuest.target_id).toUpperCase()}S`
+          : questGiverHere ? `! QUEST GIVER HERE — TYPE 'TALK TO [NAME]'` : vendorHere ? `🛒 MERCHANT NEARBY — TYPE 'SHOP'` : "TIP: TYPE 'LOOK' TO SURVEY YOUR SURROUNDINGS",
+      progressSlot,
+      nextStepSlot,
     ];
 
-    const tickerLabels = ["Weather", "Location", "Status", "Quest", "Alert", "Chronicle"];
+    const tickerLabels = ["Weather", "Location", "Status", "Quest", "Progress", "Next Step"];
 
     return (
       <div className="weather-overlay">
@@ -1609,14 +1633,6 @@ export default function Home() {
             }));
             addLog(`Quest Accepted: ${q.title}`, "system");
             addLog(q.description, "system");
-            // Show zone gate progress hint so player knows what's needed to travel
-            const zoneQuestsDoneSoFar = (zone?.quests || []).filter((zq: any) =>
-              player?.completed_quest_ids?.includes(zq.id)
-            ).length;
-            if (zoneQuestsDoneSoFar < 2) {
-              const needed = 2 - zoneQuestsDoneSoFar;
-              addLog(`✦ Complete ${needed} more quest${needed === 1 ? '' : 's'} in this zone to unlock travel.`, "hint");
-            }
           } catch (err: any) {
             addLog(`Error supporting ${q.title}: ${err.message}`, "error");
           }
