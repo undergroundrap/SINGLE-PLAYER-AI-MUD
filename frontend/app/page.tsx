@@ -1840,6 +1840,7 @@ export default function Home() {
             data.messages.forEach((msg: string, idx: number) => {
               const msgType = msg.includes("★") ? "player"
                 : msg.includes("⬆") || msg.includes("⚑") ? "system"
+                : /^\+\d+ gold/i.test(msg) ? "system"
                 : "combat";
               setTimeout(() => addLog(msg, msgType), idx * 250);
             });
