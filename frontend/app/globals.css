@@ -304,6 +304,31 @@ body.combat-flash {
   box-shadow: 0 0 10px rgba(128, 0, 0, 0.3);
 }
 
+.gather-fill {
+  background: linear-gradient(to right, #a07800, #ffe033);
+  box-shadow: 0 0 12px rgba(255, 200, 0, 0.6);
+  transition: width 0.1s linear;
+}
+
+.gather-panel {
+  padding: 12px 20px;
+  background: linear-gradient(to bottom, #1a1400, #0a0a0b);
+  border: 1px solid #7a5c00;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8), 0 0 20px rgba(120, 90, 0, 0.2);
+}
+
+.gather-label {
+  color: #e6b800;
+  font-family: var(--font-header);
+  font-weight: 900;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
 .status-icon {
   animation: pulse-border 2s infinite;
 }

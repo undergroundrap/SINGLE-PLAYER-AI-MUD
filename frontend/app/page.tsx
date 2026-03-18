@@ -571,6 +571,22 @@ export default function Home() {
   };
 
   const renderTargetFrame = () => {
+    if (isGathering) {
+      const secsRemaining = Math.max(0, ((100 - gatherCooldown) / 100) * 8).toFixed(1);
+      return (
+        <div className="target-frame">
+          <div className="gather-panel">
+            <div className="gather-label">
+              <span>Gathering Resources</span>
+              <span>{secsRemaining}s</span>
+            </div>
+            <div className="progress-container h-2" style={{ borderColor: '#7a5c00' }}>
+              <div className="progress-fill gather-fill" style={{ width: `${gatherCooldown}%` }} />
+            </div>
+          </div>
+        </div>
+      );
+    }
     if (!target) return null;
     return (
       <div className="target-frame">
@@ -2236,7 +2252,7 @@ export default function Home() {
               const data = await res.json();
 
               if (!data.success) {
-                addLog(data.message, "hint");
+                addLog(data.message, data.interrupted ? "error" : "hint");
                 break;
               }
 

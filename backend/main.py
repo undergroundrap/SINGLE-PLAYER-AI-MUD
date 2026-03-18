@@ -699,8 +699,18 @@ async def gather(player_id: str):
                     return {"success": False, "message": f"Nothing to forage here. Travel to {target_loc.name} to gather {q0.collect_name or 'resources'}."}
         return {"success": False, "message": "No active forage quest. Talk to a quest giver for a gathering assignment."}
 
-    # Apply cooldown only when there's actually something to gather
+    # Block gathering if alive mobs are present at this location
     now = time.time()
+    z_data = await vec_db.get_zone(player.current_zone_id)
+    if z_data:
+        zone_obj = Zone(**z_data)
+        current_loc = next((l for l in zone_obj.locations if l.id == player.current_location_id), None)
+        if current_loc:
+            alive_mobs = [m for m in current_loc.mobs if m.respawn_at is None or m.respawn_at <= now]
+            if alive_mobs:
+                return {"success": False, "interrupted": True, "message": f"⚠ A {alive_mobs[0].name} interrupts your gathering!"}
+
+    # Apply cooldown only when there's actually something to gather
     last = _gather_times.get(player_id, 0)
     if now - last < GATHER_COOLDOWN:
         wait = round(GATHER_COOLDOWN - (now - last), 2)
