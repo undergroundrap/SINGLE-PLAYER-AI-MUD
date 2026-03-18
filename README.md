@@ -9,16 +9,17 @@ An infinite, AI-powered text-based MMORPG. Explore a procedurally generated open
 1. [Concept](#concept)
 2. [Tech Stack](#tech-stack)
 3. [Architecture Overview](#architecture-overview)
-4. [Directory Structure & What Lives Where](#directory-structure--what-lives-where)
-5. [Key Systems — How They Work](#key-systems--how-they-work)
-6. [Data Models](#data-models)
-7. [API Reference](#api-reference)
-8. [Getting Started](#getting-started)
-9. [Environment Variables](#environment-variables)
-10. [Simulation-Driven Balance Methodology](#simulation-driven-balance-methodology)
-11. [Extending the Game](#extending-the-game)
-12. [Design Decisions](#design-decisions)
-13. [Known Constraints & Gotchas](#known-constraints--gotchas)
+4. [Quick Reference — What Lives Where](#quick-reference--what-lives-where)
+5. [Directory Structure & What Lives Where](#directory-structure--what-lives-where)
+6. [Key Systems — How They Work](#key-systems--how-they-work)
+7. [Data Models](#data-models)
+8. [API Reference](#api-reference)
+9. [Getting Started](#getting-started)
+10. [Environment Variables](#environment-variables)
+11. [Simulation-Driven Balance Methodology](#simulation-driven-balance-methodology)
+12. [Extending the Game](#extending-the-game)
+13. [Design Decisions](#design-decisions)
+14. [Known Constraints & Gotchas](#known-constraints--gotchas)
 
 ---
 
@@ -89,6 +90,27 @@ FastAPI  ─── main.py  (all endpoints, combat logic, loot rolling, quest ma
 - The frontend maintains a **local mirror** of `player` and `zone` state for instant UI updates
 - After every mutating action the frontend syncs from the response (XP, HP, gold, kills)
 - The zone ticker (`/zone/{zone_id}` polled every 10s) keeps the local zone mirror fresh
+
+---
+
+## Quick Reference — What Lives Where
+
+| I want to… | Go here |
+|---|---|
+| Add or change an API endpoint | `backend/main.py` |
+| Change combat hit/damage math | `backend/app/core/combat_engine.py` |
+| Tune HP/XP/damage scaling curves | `backend/app/core/scaling_math.py` |
+| Change loot drop rates or slot weights | `backend/app/core/world_generator.py → _roll_loot, _CLASS_SLOT_WEIGHTS` |
+| Add a dungeon or raid mechanic | `backend/app/core/dungeon_engine.py` |
+| Change zone/mob/NPC/quest generation | `backend/app/core/world_generator.py` |
+| Add a new Pydantic field to any model | `backend/app/models/schemas.py` |
+| Change the LLM provider or prompts | `backend/app/core/ai_client.py` |
+| Change the background simulation tick | `backend/app/core/simulation.py` |
+| Change any UI, command, or frontend state | `frontend/app/page.tsx` |
+| Change any visual style or animation | `frontend/app/globals.css` |
+| Run the full progression sim | `scripts/sim_run.py` |
+| Run the fast smoke test | `scripts/smoke_test.py` |
+| Wipe all game data | `scripts/reset_data.py` |
 
 ---
 
