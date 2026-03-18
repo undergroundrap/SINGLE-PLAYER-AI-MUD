@@ -459,12 +459,19 @@ def resolve_round(run: DungeonRun, player: Player, dodged: bool = False) -> dict
             )
             used_slots: set[str] = set()
             for _ in range(rolls):
-                item = _roll_loot(boss.level, guaranteed_table,
-                                  char_class=player.char_class, zone_tier=tier)
+                # Retry up to 5× to get a unique slot — guarantees the full
+                # drop count even when earlier rolls collide on the same slot.
+                item = None
+                for _attempt in range(5):
+                    candidate = _roll_loot(boss.level, guaranteed_table,
+                                          char_class=player.char_class, zone_tier=tier)
+                    if not candidate:
+                        break
+                    slot = candidate.slot or ""
+                    if slot in ("consumable", "material") or slot not in used_slots:
+                        item = candidate
+                        break
                 if not item:
-                    continue
-                # Skip duplicate slots within the same loot batch
-                if item.slot and item.slot not in ("consumable", "material") and item.slot in used_slots:
                     continue
                 if item.slot and item.slot not in ("consumable", "material"):
                     used_slots.add(item.slot)

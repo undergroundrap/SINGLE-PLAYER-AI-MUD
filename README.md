@@ -17,7 +17,8 @@ An infinite, AI-powered text-based MMORPG. Explore a procedurally generated open
 9. [Environment Variables](#environment-variables)
 10. [Simulation-Driven Balance Methodology](#simulation-driven-balance-methodology)
 11. [Extending the Game](#extending-the-game)
-12. [Known Constraints & Gotchas](#known-constraints--gotchas)
+12. [Design Decisions](#design-decisions)
+13. [Known Constraints & Gotchas](#known-constraints--gotchas)
 
 ---
 
@@ -978,6 +979,56 @@ All hit/damage math is in `combat_engine.py`. `scaling_math.py` controls the HP/
 
 ### Swapping the LLM provider
 Replace `ai_client.py` with any provider that supports the same three method signatures (`generate_content`, `stream_content`, `generate_json`). The `openai` SDK client can be pointed at any OpenAI-compatible endpoint by changing `base_url`.
+
+---
+
+## Design Decisions
+
+Answers to questions a senior reviewer would ask when reading the codebase.
+
+### Why one `main.py` instead of split routers?
+
+Every system here is intentionally coupled — loot depends on player class, level-up logic depends on combat result, combat depends on equipment stats. Splitting into separate modules creates import chains between tightly-coupled systems without any real isolation boundary. The benefit of router separation (team onboarding, independent deployment) doesn't apply to a solo project.
+
+`dungeon_engine.py` was extracted because it's genuinely separate — it owns a full lifecycle (enter → attack → advance → flee) and never needs to reach back into `main.py`. The loot roller and level-up helpers inside `main.py` are 30-line functions that only make sense in the context of the endpoint calling them. Moving them to `app/core/systems/loot.py` saves zero cognitive overhead and costs an import chain.
+
+The rule applied: split when a module boundary creates real isolation, not just file separation.
+
+### Why SQLite instead of Postgres?
+
+No concurrent writes from multiple servers, no relational queries — players are fetched by UUID, zones by UUID. SQLite is built into Python, requires no installation, ships as a single inspectable file, and handles the write volume of a single-player game trivially. The LRU cache in front of it means most reads never touch disk. Postgres adds a process, a connection pool, and a migration story for zero gameplay benefit.
+
+### Why in-memory dungeon runs instead of persisted?
+
+Dungeon runs are session-scoped by design. If the server restarts mid-run the player loses progress and starts over — acceptable for single-player. Persisting runs would require a DB write every attack round (to handle crashes mid-run), which adds latency to the tightest loop in the game and complicates the data model. The `_dungeon_runs` dict is fast, simple, and fits the ephemeral nature of instanced content.
+
+### Why a flat GS 1000 gate instead of level-scaled?
+
+The original gate was `player.level × 50`. Because players level up by clearing raids (not just open world), the gate kept rising with each clear — a treadmill where the requirement outpaced the reward. Caught and fixed by simulation: the sim validated that a flat 1000 GS gate requires exactly 3–5 raid clears at level 20, is predictable, and can be communicated clearly to players via the HUD ticker. A level-scaled gate is impossible to explain in one line of UI text.
+
+### Why local LLM instead of a cloud API?
+
+Zero latency variance, zero cost per token, works fully offline, no rate limits, no API key to manage or rotate. The content generated (zone names, mob descriptions, NPC dialogue) doesn't need frontier model capability — a 9B parameter model running locally produces output indistinguishable from GPT-4 for this use case. LM Studio's OpenAI-compatible endpoint means switching to a cloud provider is one `base_url` change in `ai_client.py`.
+
+### Why save zone state after every attack tick, not just on mob death?
+
+If zone state is only saved on mob death, the next attack request loads the mob from the last saved state — at full HP. Every hit except the kill appears to do nothing, making combat feel broken. This is the single most important rule in the persistence layer and the reason `vec_db.save_zone(...)` is called unconditionally at the end of every attack handler, not inside the `if mob.hp <= 0` branch.
+
+### Why does the loot table check rarities best-to-worst?
+
+If Common were checked first with a raid-tier multiplier, it would pass at 100% chance on every roll — blocking all higher rarities entirely. By checking Legendary → Epic → Rare → Common in order, the tier multiplier raises the floor of *quality* rather than just increasing volume. Named bosses with a 100% Common fallback never return Common because Rare is checked first and always passes.
+
+### Why are `requests.Response` objects checked with `is not None` instead of `if r`?
+
+Python's `requests` library makes `Response` objects falsy for 4xx/5xx status codes — `bool(response)` returns `False` when `status_code >= 400`. Using `if r` on a 400 response silently discards the error body and falls through to the `else "no response"` branch. This was a real bug: `try_zone_travel()` was logging `"Zone travel blocked: no response"` instead of the actual backend error message. The fix is always `if r is not None` when checking for response presence vs. `if r` when checking for HTTP success.
+
+### Why does the sim always dodge optimally?
+
+The sim is a balance tool, not a difficulty test. Dodging every telegraph removes player skill from the equation and isolates the underlying math — party DPS, healer throughput, mob damage, GS curve. A sim that occasionally fails to dodge would add variance that makes balance signals harder to read. The 100% dodge rate across all tiers confirmed the telegraph system is wired correctly end-to-end; difficulty tuning (what happens to real players who miss) is a separate concern validated in the browser.
+
+### Why does loot deduplication retry instead of skip?
+
+Raid bosses guarantee 3 drops. With 7 equipment slots and random slot selection, the probability of rolling 3 unique slots in one batch is only ~61% — about 4 in 10 raids would deliver 2 items instead of 3 if a collision just skips. The loot roller retries up to 5× per drop to find an unoccupied slot, which makes the guarantee meaningful. Five retries is enough: the probability of failing all 5 across 7 slots approaches zero.
 
 ---
 

@@ -849,15 +849,15 @@ _CLASS_WEAPONS: dict[str, dict[str, list[str]]] = {
 
 # Slot weights per class — higher = more likely to drop that slot
 _CLASS_SLOT_WEIGHTS: dict[str, dict[str, int]] = {
-    "Warrior":  {"main_hand": 5, "chest": 4, "head": 3, "legs": 3, "feet": 2, "hands": 2, "off_hand": 2},
-    "Paladin":  {"main_hand": 4, "off_hand": 4, "chest": 3, "head": 2, "legs": 2, "feet": 2, "hands": 2},
+    "Warrior":  {"main_hand": 5, "chest": 4, "head": 3, "legs": 3, "feet": 3, "hands": 3, "off_hand": 2},
+    "Paladin":  {"main_hand": 4, "off_hand": 4, "chest": 3, "head": 3, "legs": 3, "feet": 3, "hands": 2},
     "Hunter":   {"main_hand": 5, "legs": 3, "chest": 3, "head": 2, "feet": 3, "hands": 2, "off_hand": 1},
     "Rogue":    {"main_hand": 6, "hands": 3, "chest": 2, "legs": 2, "head": 2, "feet": 3, "off_hand": 1},
-    "Priest":   {"main_hand": 3, "off_hand": 5, "head": 3, "chest": 2, "legs": 2, "feet": 1, "hands": 1},
-    "Shaman":   {"main_hand": 4, "off_hand": 3, "chest": 3, "head": 2, "legs": 2, "feet": 2, "hands": 2},
-    "Mage":     {"main_hand": 4, "off_hand": 5, "head": 3, "chest": 2, "legs": 2, "feet": 1, "hands": 1},
-    "Warlock":  {"main_hand": 3, "off_hand": 5, "head": 3, "chest": 2, "legs": 2, "feet": 1, "hands": 2},
-    "Druid":    {"main_hand": 4, "off_hand": 3, "chest": 3, "head": 2, "legs": 2, "feet": 2, "hands": 2},
+    "Priest":   {"main_hand": 3, "off_hand": 5, "head": 3, "chest": 2, "legs": 2, "feet": 2, "hands": 2},
+    "Shaman":   {"main_hand": 4, "off_hand": 3, "chest": 3, "head": 3, "legs": 3, "feet": 3, "hands": 2},
+    "Mage":     {"main_hand": 4, "off_hand": 5, "head": 3, "chest": 2, "legs": 2, "feet": 2, "hands": 2},
+    "Warlock":  {"main_hand": 3, "off_hand": 5, "head": 3, "chest": 2, "legs": 2, "feet": 2, "hands": 2},
+    "Druid":    {"main_hand": 4, "off_hand": 3, "chest": 3, "head": 3, "legs": 3, "feet": 3, "hands": 2},
 }
 
 # Class-appropriate adjectives for flavour
