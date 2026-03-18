@@ -280,8 +280,8 @@ def buy_potions(pid: str, vendor_name: str) -> None:
     if not r or r.status_code != 200:
         return
     vd    = r.json()
-    stock = vd.get("stock", [])
-    gold  = vd.get("gold", 0)
+    stock = vd.get("items", [])
+    gold  = vd.get("player_gold", 0)
 
     for item in stock:
         stats = item.get("stats", {})
