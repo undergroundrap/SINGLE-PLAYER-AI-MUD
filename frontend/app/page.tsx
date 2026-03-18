@@ -2242,6 +2242,26 @@ export default function Home() {
           }
         })();
 
+      } else if (lowerCmd === 'advance' || lowerCmd === 'next room') {
+        if (!dungeonRun) {
+          addLog("You are not in a dungeon.", "hint");
+        } else {
+          const advRun = dungeonRun;
+          const advRoom = advRun.rooms?.[advRun.room_index];
+          if (!advRoom?.cleared && (advRoom?.mobs || []).some((m: any) => m.hp > 0)) {
+            addLog("Clear all enemies before advancing.", "error");
+          } else if (advRun.room_index >= (advRun.rooms?.length ?? 1) - 1) {
+            addLog("Already in the final room.", "hint");
+          } else {
+            const res = await fetch(`http://localhost:8000/dungeon/advance/${advRun.id}?player_id=${playerId}`, { method: 'POST' });
+            if (res.ok) {
+              const d = await res.json();
+              setDungeonRun(d);
+              addLog(`→ Entering ${d.rooms?.[d.room_index]?.name}...`, 'system');
+            }
+          }
+        }
+
       } else if (lowerCmd === 'flee' || lowerCmd === 'escape' || lowerCmd === 'disengage') {
         // In dungeon mode: flee exits the dungeon instance
         if (dungeonRun) {
