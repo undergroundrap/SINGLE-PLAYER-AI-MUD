@@ -670,10 +670,15 @@ python scripts/reset_data.py
 character creation → zone topology (hub/path/POI structure) → movement → harvest & fish (cooldowns + material slot) → combat (attack, cooldown 429, kill, XP) → patrol check → login/logout rested XP → player list/load → NPC talk → quest accept → vendor → sell junk → dungeon gate (blocked at level 1) → zone travel gate (blocked without quests) → describe endpoints
 
 ```powershell
+# Terminal 1 — start the backend
+cd backend
+.\venv\Scripts\activate
+uvicorn main:app --reload --port 8000
+
+# Terminal 2 — run the test
 cd backend
 .\venv\Scripts\activate
 pip install requests  # first time only — not in requirements.txt
-# Backend must already be running in another terminal
 python ..\scripts\smoke_test.py
 # or against a different port:
 python ..\scripts\smoke_test.py --base http://localhost:8001
@@ -696,12 +701,15 @@ Exits 0 on all checks passing, 1 on any failure. Run it after any backend change
 - Zone travel gate check (shows the GS block message if threshold not met)
 
 ```powershell
+# Terminal 1 — start the backend
 cd backend
 .\venv\Scripts\activate
-# Backend must already be running in another terminal
+uvicorn main:app --reload --port 8000
 
-# First time only — requests is not in requirements.txt (backend uses httpx)
-pip install requests
+# Terminal 2 — run the sim
+cd backend
+.\venv\Scripts\activate
+pip install requests  # first time only — not in requirements.txt (backend uses httpx)
 
 # Default: grind to level 12, run dungeon, clean up
 python ..\scripts\sim_run.py
