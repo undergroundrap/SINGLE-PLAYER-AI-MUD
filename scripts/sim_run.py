@@ -357,8 +357,15 @@ def do_zone_sweep(pid: str, zone_id: str, hub_loc_id: str, vendor_name: str | No
 
             r = req("post", f"/action/harvest/{pid}")
             if r and r.status_code == 200:
-                item = r.json().get("item", {})
-                log(f"    🌿 {item.get('name','?')}", G)
+                d = r.json()
+                item = d.get("item") or {}
+                name = item.get("name") if item else None
+                if name:
+                    log(f"    🌿 {name}", G)
+                elif not d.get("success"):
+                    log(f"    🌿 {d.get('message', 'harvest blocked')}", DIM)
+                else:
+                    warn(f"harvest 200 but no item name: {d}")
             elif r and r.status_code == 429:
                 log(f"    🌿 Harvest on cooldown", DIM)
             else:
@@ -366,8 +373,15 @@ def do_zone_sweep(pid: str, zone_id: str, hub_loc_id: str, vendor_name: str | No
 
             r = req("post", f"/action/fish/{pid}")
             if r and r.status_code == 200:
-                item = r.json().get("item", {})
-                log(f"    🎣 {item.get('name','?')}", G)
+                d = r.json()
+                item = d.get("item") or {}
+                name = item.get("name") if item else None
+                if name:
+                    log(f"    🎣 {name}", G)
+                elif not d.get("success"):
+                    log(f"    🎣 {d.get('message', 'fish blocked')}", DIM)
+                else:
+                    warn(f"fish 200 but no item name: {d}")
             elif r and r.status_code == 429:
                 log(f"    🎣 Fish on cooldown", DIM)
             else:
@@ -465,7 +479,7 @@ def do_dungeon_run(pid: str, is_raid: bool = False) -> bool:
                 log(f"  Room {idx + 1} cleared!", G)
                 r3 = req("post", f"/dungeon/advance/{run_id}", params={"player_id": pid})
                 if r3 and r3.status_code == 200:
-                    run = r3.json()["run"]
+                    run = r3.json()  # advance returns the run directly, not wrapped in {"run": ...}
                 advanced = True
                 break
 
