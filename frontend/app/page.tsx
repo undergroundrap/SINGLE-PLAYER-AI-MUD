@@ -2509,6 +2509,15 @@ export default function Home() {
           return;
         }
 
+        // Show gear score progress before attempting open-world travel
+        if (!isDungeon && !isRaid) {
+          const zoneMaxLevel = Math.max(...(zone?.level_range || [1, 5]));
+          const requiredGs = zoneMaxLevel * 25;
+          const currentGs = gearScore ?? 0;
+          if (currentGs < requiredGs) {
+            addLog(`Gear score: ${currentGs} / ${requiredGs} required — run dungeons and raids to earn better gear first.`, "hint");
+          }
+        }
         addLog(`Generating new ${zoneType}... Please wait.`, "system");
         try {
           if (!playerId) throw new Error("Character not found.");
@@ -2519,9 +2528,14 @@ export default function Home() {
           if (!res.ok) {
             const err = await res.json();
             addLog(err.detail || "Cannot travel there yet.", "error");
+            // Show gear score progress hint if it's a GS block
+            if (err.detail?.includes('Gear score')) {
+              addLog(`Your gear score: ${gearScore ?? 0}  ·  Run dungeons and raids to earn better drops.`, "hint");
+            }
           } else {
             const data = await res.json();
             const newZone = data.zone;
+            addLog("★ ZONE CLEARED! Advancing to the next challenge.", "system");
             setZone(newZone);
             setPlayer((prev: any) => ({
               ...prev,

@@ -397,7 +397,7 @@ async def travel_to_zone(player_id: str, is_dungeon: bool = False, is_raid: bool
     if is_dungeon and player.level < 10:
         raise HTTPException(status_code=400, detail="You need level 10+ to enter a dungeon.")
 
-    # Zone travel gate — must complete at least 2 quests from the current zone first
+    # Zone travel gate — quests AND gear score both required
     if not is_dungeon and not is_raid:
         current_zone_id = player.current_zone_id
         zone_quests_done = sum(1 for qid in player.completed_quest_ids if qid.endswith(current_zone_id))
@@ -406,6 +406,17 @@ async def travel_to_zone(player_id: str, is_dungeon: bool = False, is_raid: bool
                 status_code=400,
                 detail=f"Complete at least 2 quests before moving on. ({zone_quests_done}/2 done)"
             )
+        # Gear score gate — must have BIS-level gear from this zone's dungeon/raid content
+        z_data = await vec_db.get_zone(current_zone_id)
+        if z_data:
+            zone_max_level = max(z_data.get("level_range", [1, 5]))
+            required_gs = zone_max_level * 25
+            current_gs = calculate_gear_score(player)
+            if current_gs < required_gs:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Gear score too low to move on. ({current_gs}/{required_gs} GS) — clear dungeons and raids to earn better gear."
+                )
 
     # Each completed raid pushes open-world zones 3 levels harder — infinite tier progression
     zone_level = player.level + (player.raids_cleared * 3)
