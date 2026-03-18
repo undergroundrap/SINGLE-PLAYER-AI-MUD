@@ -1786,14 +1786,17 @@ async def reset_all_data():
 
 
 @app.post("/admin/boost/{player_id}")
-async def admin_boost_player(player_id: str, level: int = 10):
+async def admin_boost_player(player_id: str, level: int = 10, preset: str = "dungeon"):
     """
-    Dev / sim tool: instantly set a player to `level` with appropriate stats,
-    Uncommon gear, and 500g.  Skips the open-world grind so dungeon testing
-    can start immediately.  Never call this in production game flow.
+    Dev / sim tool: instantly set a player to `level` with appropriate stats and gear.
+    preset="dungeon" → level 10, ~94 GS (skips open-world grind)
+    preset="raid"    → level 20, ~280 GS (skips open-world + dungeon phases)
+    Never call this in production game flow.
     """
     if level < 1 or level > 100:
         raise HTTPException(status_code=400, detail="level must be 1–100")
+    if preset not in ("dungeon", "raid"):
+        raise HTTPException(status_code=400, detail="preset must be 'dungeon' or 'raid'")
 
     p_data = await vec_db.get_player(player_id)
     if not p_data:
@@ -1810,22 +1813,37 @@ async def admin_boost_player(player_id: str, level: int = 10):
     player.gold         = max(player.gold, 500)
     player.kills        = max(player.kills, 50)
 
-    # Equip gear that mirrors what a real open-world player has at this level:
-    # a lucky Legendary weapon + 2 Epic armor pieces from named mobs, Rare fillers,
-    # Uncommon leftovers — targeting GS ~90 so dungeons are still needed to hit the
-    # raid GS gate (100).  All items use level=1 stats since open-world drops are
-    # level-1 regardless of player level in the starter zone.
-    boost_gear = {
-        "main_hand": Item(id=f"boost_weapon_{level}",  name="Battle-Worn Sword",    description="Boost gear.", stats={"damage": int(RARITY["LEGENDARY"])}, slot="main_hand", level=1, rarity="Legendary"),
-        "chest":     Item(id=f"boost_chest_{level}",   name="Scarred Chestplate",   description="Boost gear.", stats={"armor":  int(RARITY["EPIC"])},      slot="chest",     level=1, rarity="Epic"),
-        "legs":      Item(id=f"boost_legs_{level}",    name="Hardened Leggings",    description="Boost gear.", stats={"armor":  int(RARITY["EPIC"])},      slot="legs",      level=1, rarity="Epic"),
-        "head":      Item(id=f"boost_head_{level}",    name="Dented Helm",          description="Boost gear.", stats={"armor":  int(RARITY["RARE"])},      slot="head",      level=1, rarity="Rare"),
-        "off_hand":  Item(id=f"boost_offhand_{level}", name="Battered Shield",      description="Boost gear.", stats={"armor":  int(RARITY["RARE"])},      slot="off_hand",  level=1, rarity="Rare"),
-        "hands":     Item(id=f"boost_hands_{level}",   name="Worn Gloves",          description="Boost gear.", stats={"armor":  int(RARITY["UNCOMMON"])},  slot="hands",     level=1, rarity="Uncommon"),
-        "feet":      Item(id=f"boost_feet_{level}",    name="Old Boots",            description="Boost gear.", stats={"armor":  int(RARITY["UNCOMMON"])},  slot="feet",      level=1, rarity="Uncommon"),
-    }
-    # GS breakdown: Legendary weapon (7×7=49) + 2 Epic (4×4=32) + 2 Rare (2×2.5=10) +
-    # 2 Uncommon (1×1.5=3) ≈ 94 GS — matches a real level-10 player from the sim (GS 90)
+    if preset == "dungeon":
+        # Mirrors a real level-10 open-world player — lucky Legendary weapon +
+        # 2 Epic armor + 2 Rare + 2 Uncommon.  GS ~94.  All level=1 stats because
+        # open-world drops are level-1 in the starter zone.
+        boost_gear = {
+            "main_hand": Item(id=f"boost_weapon_{level}",  name="Battle-Worn Sword",    description="Boost gear.", stats={"damage": int(RARITY["LEGENDARY"])}, slot="main_hand", level=1, rarity="Legendary"),
+            "chest":     Item(id=f"boost_chest_{level}",   name="Scarred Chestplate",   description="Boost gear.", stats={"armor":  int(RARITY["EPIC"])},      slot="chest",     level=1, rarity="Epic"),
+            "legs":      Item(id=f"boost_legs_{level}",    name="Hardened Leggings",    description="Boost gear.", stats={"armor":  int(RARITY["EPIC"])},      slot="legs",      level=1, rarity="Epic"),
+            "head":      Item(id=f"boost_head_{level}",    name="Dented Helm",          description="Boost gear.", stats={"armor":  int(RARITY["RARE"])},      slot="head",      level=1, rarity="Rare"),
+            "off_hand":  Item(id=f"boost_offhand_{level}", name="Battered Shield",      description="Boost gear.", stats={"armor":  int(RARITY["RARE"])},      slot="off_hand",  level=1, rarity="Rare"),
+            "hands":     Item(id=f"boost_hands_{level}",   name="Worn Gloves",          description="Boost gear.", stats={"armor":  int(RARITY["UNCOMMON"])},  slot="hands",     level=1, rarity="Uncommon"),
+            "feet":      Item(id=f"boost_feet_{level}",    name="Old Boots",            description="Boost gear.", stats={"armor":  int(RARITY["UNCOMMON"])},  slot="feet",      level=1, rarity="Uncommon"),
+        }
+        # GS: 7×7=49 + 4×4×2=32 + 2.5×2×2=10 + 1.5×1×2=3 ≈ 94
+    else:
+        # preset="raid": mirrors a player who just finished the dungeon phase at
+        # level 20 — Rare weapon + Rare chest from late dungeons, Uncommon fillers.
+        # GS ~280 — well above the 100 raid gate, well below the 1000 zone travel gate.
+        # Item stats use dungeon-level scaling (level 12–14 drops).
+        boost_gear = {
+            "main_hand": Item(id=f"boost_weapon_{level}",  name="Dungeon-Forged Blade",  description="Boost gear.", stats={"damage": int(14 * RARITY["RARE"])},    slot="main_hand", level=14, rarity="Rare"),
+            "chest":     Item(id=f"boost_chest_{level}",   name="Vaultkeeper Chestplate",description="Boost gear.", stats={"armor":  int(12 * RARITY["RARE"])},    slot="chest",     level=12, rarity="Rare"),
+            "legs":      Item(id=f"boost_legs_{level}",    name="Iron Leggings",         description="Boost gear.", stats={"armor":  int(14 * RARITY["UNCOMMON"])},slot="legs",      level=14, rarity="Uncommon"),
+            "head":      Item(id=f"boost_head_{level}",    name="Iron Helm",             description="Boost gear.", stats={"armor":  int(12 * RARITY["UNCOMMON"])},slot="head",      level=12, rarity="Uncommon"),
+            "off_hand":  Item(id=f"boost_offhand_{level}", name="Cracked Shield",        description="Boost gear.", stats={"armor":  int(10 * RARITY["UNCOMMON"])},slot="off_hand",  level=10, rarity="Uncommon"),
+            "hands":     Item(id=f"boost_hands_{level}",   name="Iron Gloves",           description="Boost gear.", stats={"armor":  int(10 * RARITY["UNCOMMON"])},slot="hands",     level=10, rarity="Uncommon"),
+            "feet":      Item(id=f"boost_feet_{level}",    name="Iron Boots",            description="Boost gear.", stats={"armor":  int(10 * RARITY["UNCOMMON"])},slot="feet",      level=10, rarity="Uncommon"),
+        }
+        # GS: Rare 14 (35×2.5=87.5) + Rare 12 (30×2.5=75) + 5 Uncommon ≈ 280
+        player.kills = max(player.kills, 200)
+
     player.equipment.update(boost_gear)
 
     await vec_db.save_player(player_id, player.model_dump(mode='json'))

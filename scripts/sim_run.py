@@ -9,6 +9,8 @@ Usage:
     python scripts/sim_run.py                   # full meta run
     python scripts/sim_run.py --quick           # one sweep + one dungeon, then stop
     python scripts/sim_run.py --no-cleanup      # keep character after run
+    python scripts/sim_run.py --skip-to-dungeon # boost to lv10 ~94 GS, skip Phase 1
+    python scripts/sim_run.py --skip-to-raid    # boost to lv20 ~280 GS, skip Phases 1+2
     python scripts/sim_run.py --base http://localhost:8001
 
 Exits 0 on a clean run, 1 on any hard error.
@@ -26,7 +28,9 @@ parser.add_argument("--quick", action="store_true",
 parser.add_argument("--no-cleanup", action="store_true",
                     help="Keep the test character after the run")
 parser.add_argument("--skip-to-dungeon", action="store_true",
-                    help="Instantly boost to level 10 with Uncommon gear, skip Phase 1")
+                    help="Instantly boost to level 10 ~94 GS, skip Phase 1 (saves ~35-50 min)")
+parser.add_argument("--skip-to-raid", action="store_true",
+                    help="Instantly boost to level 20 ~280 GS, skip Phases 1+2 (saves ~60-90 min)")
 parser.add_argument("--name", default="SimBot")
 args = parser.parse_args()
 
@@ -73,6 +77,27 @@ def log(msg: str, color: str = W) -> None:
 def warn(msg: str) -> None:
     errors.append(msg)
     log(f"✗ {msg}", R)
+
+
+def milestone(title: str, pid: str) -> None:
+    """Print a loud phase-transition banner with current player stats."""
+    p, gs = fresh_player(pid)
+    elapsed = time.time() - _sim_start
+    print(f"\n{M}{'█' * 64}{RST}")
+    print(f"{M}  ★ MILESTONE: {title}{RST}")
+    print(f"{M}  Lv{p.get('level','?')}  GS {gs}  "
+          f"Dungeons {p.get('dungeons_cleared',0)}  Raids {p.get('raids_cleared',0)}  "
+          f"Gold {p.get('gold',0)}  [{elapsed:.0f}s elapsed]{RST}")
+    eq = p.get("equipment", {})
+    gear_lines = [
+        f"    {slot:10} {item.get('name','?'):28} [{item.get('rarity','?'):9}] "
+        f"stat={list(item.get('stats',{}).values())[0] if item.get('stats') else '?'}"
+        for slot, item in eq.items()
+        if item.get("name") and item["name"] != "None"
+    ]
+    for line in gear_lines:
+        print(f"{DIM}{line}{RST}")
+    print(f"{M}{'█' * 64}{RST}\n")
 
 
 def section(title: str) -> None:
@@ -514,7 +539,10 @@ def try_zone_travel(pid: str) -> bool:
 
 print(f"\n{M}{'═' * 64}{RST}")
 print(f"{M}  SINGLE PLAYER AI MUD — Full Meta Simulation{RST}")
-_mode = "QUICK" if args.quick else "SKIP-TO-DUNGEON" if args.skip_to_dungeon else "FULL META"
+_mode = ("QUICK" if args.quick
+         else "SKIP-TO-RAID"    if args.skip_to_raid
+         else "SKIP-TO-DUNGEON" if args.skip_to_dungeon
+         else "FULL META")
 print(f"{M}  Mode: {_mode}  |  Backend: {BASE}{RST}")
 print(f"{M}{'═' * 64}{RST}")
 
@@ -582,9 +610,21 @@ if vendor_name:
 # PHASE 1 — OPEN WORLD: grind until level 10 (dungeon gate)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-if args.skip_to_dungeon:
+if args.skip_to_raid:
+    section(f"PHASE 1+2 — SKIPPED (--skip-to-raid)")
+    r = req("post", f"/admin/boost/{pid}",
+            params={"level": RAID_LEVEL_GATE, "preset": "raid"})
+    if r and r.status_code == 200:
+        bd = r.json()
+        log(f"Boosted to Lv{bd['level']}  HP {bd['hp']}  DMG {bd['damage']}  "
+            f"GS {bd['gear_score']}  Gold {bd['gold']}", G)
+        milestone("SKIPPED TO RAID — entering Phase 3", pid)
+    else:
+        die(f"Boost failed: {r.status_code if r else 'no response'}")
+elif args.skip_to_dungeon:
     section(f"PHASE 1 — SKIPPED (--skip-to-dungeon)")
-    r = req("post", f"/admin/boost/{pid}", params={"level": DUNGEON_LEVEL_GATE})
+    r = req("post", f"/admin/boost/{pid}",
+            params={"level": DUNGEON_LEVEL_GATE, "preset": "dungeon"})
     if r and r.status_code == 200:
         bd = r.json()
         log(f"Boosted to Lv{bd['level']}  HP {bd['hp']}  DMG {bd['damage']}  "
@@ -607,6 +647,7 @@ else:
 
         if level >= DUNGEON_LEVEL_GATE:
             log(f"Reached level {DUNGEON_LEVEL_GATE} — dungeon unlocked!", G)
+            milestone("PHASE 1 → 2: Open World Complete", pid)
             break
 
         kills = do_zone_sweep(pid, zone_id, hub_loc_id, vendor_name)
@@ -636,18 +677,22 @@ else:
 # ═══════════════════════════════════════════════════════════════════════════════
 # PHASE 2 — DUNGEON LOOP: run dungeons + open world until GS 100 + level 20
 # ═══════════════════════════════════════════════════════════════════════════════
-section(f"PHASE 2 — DUNGEON LOOP (target: GS {RAID_GS_GATE} + level {RAID_LEVEL_GATE})")
+if args.skip_to_raid:
+    section(f"PHASE 2 — SKIPPED (--skip-to-raid)")
+else:
+    section(f"PHASE 2 — DUNGEON LOOP (target: GS {RAID_GS_GATE} + level {RAID_LEVEL_GATE})")
 
 dungeon_count = 0
 respawn_waits = 0
 
-while dungeon_count < MAX_DUNGEONS:
+while dungeon_count < MAX_DUNGEONS and not args.skip_to_raid:
     p, gs = fresh_player(pid)
     level = p.get("level", 1)
     log(f"── Dungeon {dungeon_count + 1}  Lv{level}  GS {gs}", C)
 
     if level >= RAID_LEVEL_GATE and gs >= RAID_GS_GATE:
         log(f"GS {gs} ≥ {RAID_GS_GATE} and level {level} ≥ {RAID_LEVEL_GATE} — raid unlocked!", G)
+        milestone("PHASE 2 → 3: Dungeon Phase Complete", pid)
         break
 
     cleared = do_dungeon_run(pid, is_raid=False)
@@ -685,8 +730,9 @@ if not args.quick and p.get("level", 1) >= RAID_LEVEL_GATE and gs >= RAID_GS_GAT
         # Try zone travel after each raid clear
         if cleared:
             p, gs = fresh_player(pid)
-            log(f"  Checking zone travel…  GS {gs}", DIM)
+            log(f"  Checking zone travel…  GS {gs}  (need 1000)", DIM)
             if try_zone_travel(pid):
+                milestone("ZONE TRAVEL SUCCESS — Phase 3 Complete", pid)
                 # Update zone state for the new zone
                 p, gs = fresh_player(pid)
                 zone_id    = p.get("current_zone_id", zone_id)

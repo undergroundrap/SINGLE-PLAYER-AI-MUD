@@ -620,7 +620,7 @@ All endpoints are in `backend/main.py`. Backend runs on `http://localhost:8000`.
 | Method | Path | Description |
 |---|---|---|
 | `POST` | `/admin/reset` | Wipe all persisted game data (players + zones). Full clean slate — no server restart needed. Dev/testing only. |
-| `POST` | `/admin/boost/{player_id}` | **Dev/sim only.** Instantly set the player to `level` (default 10) with class-appropriate stats, realistic mixed gear (Legendary weapon + Epic/Rare/Uncommon armor, targeting ~GS 90), and 500g. Bypasses 35-50 min of open-world grind. Param: `level` (1–100). Returns `{level, hp, damage, gear_score, gold}`. Used by `sim_run.py --skip-to-dungeon`. |
+| `POST` | `/admin/boost/{player_id}` | **Dev/sim only.** Instantly set the player to `level` with class-appropriate stats and preset gear. Params: `level` (1–100, default 10), `preset` (`dungeon` or `raid`, default `dungeon`). `dungeon` → lv10, ~94 GS (Legendary weapon + Epic/Rare/Uncommon armor). `raid` → lv20, ~280 GS (Rare weapon + Uncommon armor, mirrors late-dungeon phase). Returns `{level, hp, damage, gear_score, gold}`. |
 
 ### Narrative
 | Method | Path | Description |
