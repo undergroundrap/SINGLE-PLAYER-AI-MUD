@@ -266,6 +266,12 @@ def _make_loot_table(mob_level: int, is_elite: bool = False, is_named: bool = Fa
     ]
 
 
+def _scaled_mult(level: int, low: float, high: float, ramp_end: int = 10) -> float:
+    """Linearly interpolate from `low` at level 1 to `high` at `ramp_end`, clamped."""
+    t = min(1.0, (level - 1) / max(1, ramp_end - 1))
+    return low + t * (high - low)
+
+
 def _make_mobs(mob_name: str, mob_level: int, zone_id: str, loc_index: int, count: int = 3, force_boss: bool = False) -> list:
     mobs = []
     named_spawned = False
@@ -279,12 +285,16 @@ def _make_mobs(mob_name: str, mob_level: int, zone_id: str, loc_index: int, coun
             tpl = random.choice(_NAMED_TEMPLATES)
             name = tpl[0].format(name=mob_name)
             desc = tpl[1]
-            hp_mult, dmg_mult = 3.0, 1.5
+            # Ramp: 1.6× HP / 1.15× dmg at level 1 → 3.0× HP / 1.5× dmg at level 10
+            hp_mult  = _scaled_mult(mob_level, 1.6, 3.0)
+            dmg_mult = _scaled_mult(mob_level, 1.15, 1.5)
         elif is_elite:
             prefix = random.choice(_ELITE_PREFIXES)
             name = f"{prefix} {mob_name}"
             desc = f"A fearsome elite {mob_name}, stronger than its kin."
-            hp_mult, dmg_mult = 2.0, 1.3
+            # Ramp: 1.3× HP / 1.1× dmg at level 1 → 2.0× HP / 1.3× dmg at level 10
+            hp_mult  = _scaled_mult(mob_level, 1.3, 2.0)
+            dmg_mult = _scaled_mult(mob_level, 1.1, 1.3)
         else:
             name = mob_name
             desc = f"A menacing {mob_name}."

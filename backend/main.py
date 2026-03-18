@@ -1781,3 +1781,53 @@ async def reset_all_data():
         "success": True,
         "message": "All game data cleared. Create a new character to begin.",
     }
+
+
+@app.post("/admin/boost/{player_id}")
+async def admin_boost_player(player_id: str, level: int = 10):
+    """
+    Dev / sim tool: instantly set a player to `level` with appropriate stats,
+    Uncommon gear, and 500g.  Skips the open-world grind so dungeon testing
+    can start immediately.  Never call this in production game flow.
+    """
+    if level < 1 or level > 100:
+        raise HTTPException(status_code=400, detail="level must be 1–100")
+
+    p_data = await vec_db.get_player(player_id)
+    if not p_data:
+        raise HTTPException(status_code=404, detail="Player not found.")
+    player = Player(**p_data)
+
+    hp_mult, dmg_mult = CLASS_STATS.get(player.char_class, (1.0, 1.0))
+    player.level        = level
+    player.max_hp       = int(ScalingMath.get_max_hp(level)  * hp_mult)
+    player.hp           = player.max_hp
+    player.damage       = int(ScalingMath.get_damage(level)   * dmg_mult)
+    player.xp           = 0
+    player.next_level_xp = ScalingMath.get_xp_required(level)
+    player.gold         = max(player.gold, 500)
+    player.kills        = max(player.kills, 50)
+
+    # Equip Uncommon gear scaled to the target level
+    stat_val = max(1, int(level * RARITY["UNCOMMON"]))
+    boost_gear = {
+        "head":      Item(id=f"boost_head_{level}",     name=f"Sturdy Helm",      description="Boost gear.", stats={"armor": stat_val},  slot="head",      level=level, rarity="Uncommon"),
+        "chest":     Item(id=f"boost_chest_{level}",    name=f"Sturdy Chestplate",description="Boost gear.", stats={"armor": stat_val},  slot="chest",     level=level, rarity="Uncommon"),
+        "hands":     Item(id=f"boost_hands_{level}",    name=f"Sturdy Gloves",    description="Boost gear.", stats={"armor": stat_val},  slot="hands",     level=level, rarity="Uncommon"),
+        "legs":      Item(id=f"boost_legs_{level}",     name=f"Sturdy Leggings",  description="Boost gear.", stats={"armor": stat_val},  slot="legs",      level=level, rarity="Uncommon"),
+        "feet":      Item(id=f"boost_feet_{level}",     name=f"Sturdy Boots",     description="Boost gear.", stats={"armor": stat_val},  slot="feet",      level=level, rarity="Uncommon"),
+        "main_hand": Item(id=f"boost_weapon_{level}",   name=f"Sturdy Sword",     description="Boost gear.", stats={"damage": stat_val}, slot="main_hand", level=level, rarity="Uncommon"),
+        "off_hand":  Item(id=f"boost_offhand_{level}",  name=f"Sturdy Shield",    description="Boost gear.", stats={"armor": stat_val},  slot="off_hand",  level=level, rarity="Uncommon"),
+    }
+    player.equipment.update(boost_gear)
+
+    await vec_db.save_player(player_id, player.model_dump(mode='json'))
+    gs = calculate_gear_score(player)
+    return {
+        "success": True,
+        "level": player.level,
+        "hp": player.hp,
+        "damage": player.damage,
+        "gear_score": gs,
+        "gold": player.gold,
+    }

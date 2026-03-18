@@ -25,6 +25,8 @@ parser.add_argument("--quick", action="store_true",
                     help="Stop after first dungeon clear — fast smoke check")
 parser.add_argument("--no-cleanup", action="store_true",
                     help="Keep the test character after the run")
+parser.add_argument("--skip-to-dungeon", action="store_true",
+                    help="Instantly boost to level 10 with Uncommon gear, skip Phase 1")
 parser.add_argument("--name", default="SimBot")
 args = parser.parse_args()
 
@@ -502,7 +504,8 @@ def try_zone_travel(pid: str) -> bool:
 
 print(f"\n{M}{'═' * 64}{RST}")
 print(f"{M}  SINGLE PLAYER AI MUD — Full Meta Simulation{RST}")
-print(f"{M}  Mode: {'QUICK' if args.quick else 'FULL META'}  |  Backend: {BASE}{RST}")
+_mode = "QUICK" if args.quick else "SKIP-TO-DUNGEON" if args.skip_to_dungeon else "FULL META"
+print(f"{M}  Mode: {_mode}  |  Backend: {BASE}{RST}")
 print(f"{M}{'═' * 64}{RST}")
 
 
@@ -568,45 +571,56 @@ if vendor_name:
 # ═══════════════════════════════════════════════════════════════════════════════
 # PHASE 1 — OPEN WORLD: grind until level 10 (dungeon gate)
 # ═══════════════════════════════════════════════════════════════════════════════
-section(f"PHASE 1 — OPEN WORLD (target: level {DUNGEON_LEVEL_GATE})")
 
-sweep_count   = 0
-respawn_waits = 0
-
-while True:
-    p, gs = fresh_player(pid)
-    level = p.get("level", 1)
-    xp    = p.get("xp", 0)
-    nxp   = p.get("next_level_xp", 100)
-    log(f"── Sweep {sweep_count + 1}  Lv{level}  XP {xp}/{nxp}  GS {gs}  "
-        f"Gold {p.get('gold',0)}", C)
-
-    if level >= DUNGEON_LEVEL_GATE:
-        log(f"Reached level {DUNGEON_LEVEL_GATE} — dungeon unlocked!", G)
-        break
-
-    kills = do_zone_sweep(pid, zone_id, hub_loc_id, vendor_name)
-    sweep_count += 1
-    move(pid, hub_loc_id)
-    do_hub_routine(pid, zone_id, vendor_name)
-
-    if kills == 0:
-        respawn_waits += 1
-        log(f"No kills — waiting 15s for respawns ({respawn_waits}/6)…", DIM)
-        time.sleep(15)
-        if respawn_waits >= 6:
-            warn("Too many empty sweeps — mobs may not be respawning")
-            break
+if args.skip_to_dungeon:
+    section(f"PHASE 1 — SKIPPED (--skip-to-dungeon)")
+    r = req("post", f"/admin/boost/{pid}", params={"level": DUNGEON_LEVEL_GATE})
+    if r and r.status_code == 200:
+        bd = r.json()
+        log(f"Boosted to Lv{bd['level']}  HP {bd['hp']}  DMG {bd['damage']}  "
+            f"GS {bd['gear_score']}  Gold {bd['gold']}", G)
     else:
-        respawn_waits = 0
+        die(f"Boost failed: {r.status_code if r else 'no response'}")
+else:
+    section(f"PHASE 1 — OPEN WORLD (target: level {DUNGEON_LEVEL_GATE})")
 
-    if sweep_count >= MAX_SWEEPS:
-        warn(f"Sweep limit ({MAX_SWEEPS}) hit at level {level}")
-        break
+    sweep_count   = 0
+    respawn_waits = 0
 
-    if args.quick:
-        log("--quick: stopping open world phase after 1 sweep", DIM)
-        break
+    while True:
+        p, gs = fresh_player(pid)
+        level = p.get("level", 1)
+        xp    = p.get("xp", 0)
+        nxp   = p.get("next_level_xp", 100)
+        log(f"── Sweep {sweep_count + 1}  Lv{level}  XP {xp}/{nxp}  GS {gs}  "
+            f"Gold {p.get('gold',0)}", C)
+
+        if level >= DUNGEON_LEVEL_GATE:
+            log(f"Reached level {DUNGEON_LEVEL_GATE} — dungeon unlocked!", G)
+            break
+
+        kills = do_zone_sweep(pid, zone_id, hub_loc_id, vendor_name)
+        sweep_count += 1
+        move(pid, hub_loc_id)
+        do_hub_routine(pid, zone_id, vendor_name)
+
+        if kills == 0:
+            respawn_waits += 1
+            log(f"No kills — waiting 15s for respawns ({respawn_waits}/6)…", DIM)
+            time.sleep(15)
+            if respawn_waits >= 6:
+                warn("Too many empty sweeps — mobs may not be respawning")
+                break
+        else:
+            respawn_waits = 0
+
+        if sweep_count >= MAX_SWEEPS:
+            warn(f"Sweep limit ({MAX_SWEEPS}) hit at level {level}")
+            break
+
+        if args.quick:
+            log("--quick: stopping open world phase after 1 sweep", DIM)
+            break
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
