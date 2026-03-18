@@ -1844,6 +1844,15 @@ export default function Home() {
                 : "combat";
               setTimeout(() => addLog(msg, msgType), idx * 250);
             });
+            // Progression milestone hints on level-up
+            if (data.player_level && data.player_level !== player?.level) {
+              const delay = data.messages.length * 250 + 100;
+              if (data.player_level === 10) {
+                setTimeout(() => addLog("⚑ DUNGEONS UNLOCKED — type 'travel dungeon' or use the sidebar to enter.", "hint"), delay);
+              } else if (data.player_level === 20) {
+                setTimeout(() => addLog("⚑ RAIDS UNLOCKED — type 'travel raid' or use the sidebar to enter.", "hint"), delay);
+              }
+            }
 
             setLastCombatTime(Date.now());
             if (data.player_hp < (player?.hp ?? data.player_hp)) {
@@ -2192,14 +2201,6 @@ export default function Home() {
                 }
               } catch (err: any) {
                 addLog(`Turn-in Error: ${err.message}`, "error");
-              }
-            }
-            // Zone-cleared banner — checked once after all turn-ins complete
-            if (turnedInIds.length > 0) {
-              const allCompletedIds = new Set([...(player?.completed_quest_ids || []), ...turnedInIds]);
-              const zoneQuestIds = (zone?.quests || []).map((q: any) => q.id);
-              if (zoneQuestIds.length > 0 && zoneQuestIds.every((id: string) => allCompletedIds.has(id))) {
-                addLog("━━ Zone cleared! Type 'travel' or use the portal to move on. ━━", "system");
               }
             }
           }
