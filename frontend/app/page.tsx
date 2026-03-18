@@ -2312,8 +2312,6 @@ export default function Home() {
           addLog("You are not in combat.", "hint");
         } else {
           const fleeMob = autoAttackTarget;
-          setAutoAttackTarget(null);
-          setTarget(null);
           try {
             if (!playerId) throw new Error("Character not found.");
             const res = await fetch(
@@ -2322,6 +2320,10 @@ export default function Home() {
             );
             const data = await res.json();
             data.messages?.forEach((msg: string) => addLog(msg, data.fled ? "system" : "combat"));
+            if (data.fled || data.player_dead) {
+              setAutoAttackTarget(null);
+              setTarget(null);
+            }
             setPlayer((prev: any) => ({
               ...prev,
               hp: data.player_hp ?? prev.hp,
@@ -2331,7 +2333,7 @@ export default function Home() {
                 : {}),
             }));
             if (data.player_dead) {
-              describeEntity(autoAttackTarget || 'the enemy', { isDeath: true });
+              describeEntity(fleeMob || 'the enemy', { isDeath: true });
               addLog("☠ Slain while fleeing! You wake at the settlement.", "error");
             }
           } catch (err: any) {
