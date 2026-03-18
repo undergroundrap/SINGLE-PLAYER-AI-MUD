@@ -530,7 +530,13 @@ def do_dungeon_run(pid: str, is_raid: bool = False) -> bool:
 # ── Zone travel ───────────────────────────────────────────────────────────────
 
 def try_zone_travel(pid: str) -> bool:
-    r = req("post", f"/zone/travel/{pid}")
+    # Zone travel triggers AI zone generation — give it 90s before timing out
+    url = BASE + f"/zone/travel/{pid}"
+    try:
+        r = requests.post(url, timeout=90)
+    except Exception as e:
+        warn(f"Zone travel request failed: {e}")
+        return False
     if r and r.status_code == 200:
         new_zone = r.json().get("zone", {})
         log(f"★ Zone travel → {new_zone.get('name','?')}", G)

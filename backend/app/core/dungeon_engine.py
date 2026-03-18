@@ -409,11 +409,17 @@ def resolve_round(run: DungeonRun, player: Player) -> dict:
                  {"chance": 0.35, "rarity": "Rare",       "stat_mult": 2.5},
                  {"chance": 0.15, "rarity": "Epic",       "stat_mult": 4.0}]
             )
+            used_slots: set[str] = set()
             for _ in range(rolls):
                 item = _roll_loot(boss.level, guaranteed_table,
                                   char_class=player.char_class, zone_tier=tier)
                 if not item:
                     continue
+                # Skip duplicate slots within the same loot batch
+                if item.slot and item.slot not in ("consumable", "material") and item.slot in used_slots:
+                    continue
+                if item.slot and item.slot not in ("consumable", "material"):
+                    used_slots.add(item.slot)
                 # Auto-equip if upgrade (same logic as open-world kills)
                 if item.slot:
                     current  = player.equipment.get(item.slot)
