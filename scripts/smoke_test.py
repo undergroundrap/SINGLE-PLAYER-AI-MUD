@@ -163,7 +163,7 @@ if path_loc:
 
     # Cooldown — immediate second harvest should 429
     r2 = req("post", f"/action/harvest/{player_id}")
-    check("immediate second harvest hits cooldown (429)", r2 and r2.status_code == 429)
+    check("immediate second harvest hits cooldown (429)", r2 is not None and r2.status_code == 429)
 
     r3 = req("post", f"/action/fish/{player_id}")
     check("POST /action/fish returns 200", r3 and r3.status_code == 200)
@@ -174,7 +174,7 @@ if path_loc:
 
     # Cooldown — immediate second fish should 429
     r4 = req("post", f"/action/fish/{player_id}")
-    check("immediate second fish hits cooldown (429)", r4 and r4.status_code == 429)
+    check("immediate second fish hits cooldown (429)", r4 is not None and r4.status_code == 429)
 
     # Move back to hub
     req("post", f"/action/move/{player_id}", params={"location_id": loc_id})
@@ -200,16 +200,22 @@ if not mob:
 
 if mob:
     mob_name = mob["name"]
+    t_atk = time.time()
     r = req("post", f"/action/attack/{player_id}", params={"mob_name": mob_name})
+    atk_rtt = time.time() - t_atk
     check("POST /action/attack returns 200", r and r.status_code == 200)
     atk = r.json() if r else {}
     check("attack.messages is list", isinstance(atk.get("messages"), list))
     check("attack.player_hp present", "player_hp" in atk)
     check("attack.mob_hp present", "mob_hp" in atk)
 
-    # Cooldown check
+    # Cooldown check — only meaningful if the first attack round-trip was fast enough
+    # that the 1.5s window hasn't already expired by the time r2 is sent.
     r2 = req("post", f"/action/attack/{player_id}", params={"mob_name": mob_name})
-    check("immediate second attack hits cooldown (429)", r2 and r2.status_code == 429)
+    if atk_rtt < 1.0:
+        check("immediate second attack hits cooldown (429)", r2 is not None and r2.status_code == 429)
+    else:
+        print(f"  {INFO} Cooldown check skipped — first attack took {atk_rtt:.2f}s (> 1.0s, window may have expired)")
 
     # Kill mob (up to 30 attempts with 2s waits)
     time.sleep(2)
@@ -324,8 +330,8 @@ if vendor:
     r = req("get", f"/vendor/{player_id}", params={"npc_name": vendor["name"]})
     check("GET /vendor returns 200", r and r.status_code == 200)
     vd = r.json() if r else {}
-    check("vendor stock is list", isinstance(vd.get("stock"), list))
-    check("vendor gold present", "gold" in vd)
+    check("vendor items is list", isinstance(vd.get("items"), list))
+    check("vendor player_gold present", "player_gold" in vd)
 else:
     print(f"  {INFO} No vendor at hub — skipping vendor test")
 
@@ -345,15 +351,15 @@ else:
 # ── 14. Dungeon gate (level 1 → blocked) ─────────────────────────────────────
 print("\n[14] Dungeon gate")
 r = req("post", f"/dungeon/enter/{player_id}", params={"is_raid": "false"})
-check("dungeon entry blocked at level 1 (non-200)", r and r.status_code != 200,
-      f"got {r.status_code if r else 'no response'}")
+check("dungeon entry blocked at level 1 (non-200)", r is not None and r.status_code != 200,
+      f"got {r.status_code if r is not None else 'no response'}")
 
 
 # ── 15. Zone travel gate (low GS → blocked) ──────────────────────────────────
 print("\n[15] Zone travel gate")
 r = req("post", f"/zone/travel/{player_id}")
-check("zone travel blocked at low GS (non-200)", r and r.status_code != 200,
-      f"got {r.status_code if r else 'no response'}")
+check("zone travel blocked at low GS (non-200)", r is not None and r.status_code != 200,
+      f"got {r.status_code if r is not None else 'no response'}")
 
 
 # ── 16. Describe endpoints ─────────────────────────────────────────────────────
@@ -375,8 +381,8 @@ check("entity description returned", bool((r.json() if r else {}).get("descripti
 # ── 17. Ascension gate (zone_number 1 → blocked) ─────────────────────────────
 print("\n[17] Ascension gate")
 r = req("post", f"/ascend/{player_id}")
-check("ascend blocked at zone_number 1 (non-200)", r and r.status_code != 200,
-      f"got {r.status_code if r else 'no response'}")
+check("ascend blocked at zone_number 1 (non-200)", r is not None and r.status_code != 200,
+      f"got {r.status_code if r is not None else 'no response'}")
 
 # Verify /admin/force_ascend applies mult correctly
 r = req("post", f"/admin/force_ascend/{player_id}", params={"ascensions": 3})
@@ -396,7 +402,7 @@ print("\n[18] Cleanup")
 r = req("delete", f"/player/{player_id}")
 check("DELETE /player returns 200", r and r.status_code == 200)
 r2 = req("get", f"/player/{player_id}")
-check("player no longer loadable after delete (404)", r2 and r2.status_code == 404)
+check("player no longer loadable after delete (404)", r2 is not None and r2.status_code == 404)
 
 
 # ── Summary ────────────────────────────────────────────────────────────────────

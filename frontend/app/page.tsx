@@ -2117,9 +2117,9 @@ export default function Home() {
             const data = await res.json();
             setIsAttacking(false);
 
-            if (!data.success) {
-              // Cooldown rejection from backend — just wait silently, auto-attack will retry
-              if (!data.on_cooldown) addLog(data.message, "error");
+            if (res.status === 429 || !data.success) {
+              // Cooldown rejection — wait silently, auto-attack will retry
+              if (res.status !== 429 && !data.on_cooldown) addLog(data.message, "error");
               return;
             }
 
@@ -2598,7 +2598,7 @@ export default function Home() {
           try {
             const res = await fetch(`http://localhost:8000/action/harvest/${playerId}`, { method: 'POST' });
             const data = await res.json();
-            if (!data.success) { addLog(data.message, data.interrupted ? "error" : "hint"); return; }
+            if (res.status === 429 || !data.success) { addLog(res.status === 429 ? (data.detail || "Harvesting on cooldown.") : data.message, data.interrupted ? "error" : "hint"); return; }
             addLog(data.message, "system");
             if (data.item) setPlayer((prev: any) => prev ? { ...prev, inventory: [...(prev.inventory || []), data.item] } : prev);
             addLog(`Harvesting... (${HARVEST_CD / 1000}s)`, "hint");
@@ -2630,7 +2630,7 @@ export default function Home() {
           try {
             const res = await fetch(`http://localhost:8000/action/fish/${playerId}`, { method: 'POST' });
             const data = await res.json();
-            if (!data.success) { addLog(data.message, "hint"); return; }
+            if (res.status === 429 || !data.success) { addLog(res.status === 429 ? (data.detail || "Fishing on cooldown.") : data.message, "hint"); return; }
             addLog(data.message, "system");
             if (data.item) setPlayer((prev: any) => prev ? { ...prev, inventory: [...(prev.inventory || []), data.item] } : prev);
             addLog(`Fishing... (${FISH_CD / 1000}s)`, "hint");

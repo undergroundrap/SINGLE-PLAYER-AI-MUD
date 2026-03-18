@@ -147,6 +147,7 @@ async def list_players():
                 "deaths":              raw.get("deaths", 0),
                 "current_zone_id":     raw.get("current_zone_id", ""),
                 "completed_quest_ids": len(raw.get("completed_quest_ids") or []),
+                "gear_score":          calculate_gear_score(Player(**raw)),
             })
         summaries.sort(key=lambda p: (p["level"], p["kills"]), reverse=True)
         return {"players": summaries}
@@ -263,7 +264,7 @@ async def accept_quest(player_id: str, quest_id: str):
 
     player.active_quests.append(quest)
     await vec_db.save_player(player_id, player.model_dump(mode='json'))
-    return {"message": f"Quest '{quest.title}' accepted", "quest": quest}
+    return {"success": True, "message": f"Quest '{quest.title}' accepted", "quest": quest}
 
 
 @app.post("/quests/progress/{player_id}")
@@ -386,7 +387,12 @@ async def move_player(player_id: str, location_id: str):
     await vec_db.save_player(player_id, player.model_dump(mode='json'))
     loc_name = dest_loc.name if dest_loc else ''
     sim_engine.mark_player_zone(player.current_zone_id, loc_name)
-    return {"success": True, "location_id": location_id, "explore_completed": explore_completed}
+    return {
+        "success": True,
+        "location_id": location_id,
+        "explore_completed": explore_completed,
+        "player": {"current_location_id": player.current_location_id},
+    }
 
 
 @app.get("/zone/{zone_id}")
@@ -577,7 +583,7 @@ async def attack(player_id: str, mob_name: str, dodged: bool = False):
         last = _attack_times.get(player_id, 0)
         if now - last < ATTACK_COOLDOWN:
             wait = round(ATTACK_COOLDOWN - (now - last), 2)
-            return {"success": False, "message": f"Not ready. ({wait}s remaining)", "on_cooldown": True}
+            raise HTTPException(status_code=429, detail=f"Not ready. ({wait}s remaining)")
     _attack_times[player_id] = now
 
     # ── Load state ─────────────────────────────
@@ -928,7 +934,7 @@ async def harvest(player_id: str):
     last = _harvest_times.get(player_id, 0)
     if now - last < HARVEST_CD:
         wait = round(HARVEST_CD - (now - last), 2)
-        return {"success": False, "message": f"You search the undergrowth... ({wait}s remaining)", "on_cooldown": True}
+        raise HTTPException(status_code=429, detail=f"You search the undergrowth... ({wait}s remaining)")
     _harvest_times[player_id] = now
 
     if len(player.inventory) >= BAG_SIZE:
@@ -968,7 +974,7 @@ async def fish(player_id: str):
     last = _fish_times.get(player_id, 0)
     if now - last < FISH_CD:
         wait = round(FISH_CD - (now - last), 2)
-        return {"success": False, "message": f"Your line is still in the water... ({wait}s remaining)", "on_cooldown": True}
+        raise HTTPException(status_code=429, detail=f"Your line is still in the water... ({wait}s remaining)")
     _fish_times[player_id] = now
 
     if len(player.inventory) >= BAG_SIZE:
