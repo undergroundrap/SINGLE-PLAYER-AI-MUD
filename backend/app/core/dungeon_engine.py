@@ -2,8 +2,8 @@
 dungeon_engine.py
 Round-based instanced dungeon system.
 
-Dungeon (5-player): 3 rooms — trash → trash+elite → boss
-Raid   (10-player): 5 rooms — trash → trash+elite → mini-boss → trash → final boss (phase 2 enrage)
+Dungeon (5-player): 4 rooms — trash → corridor → trash+elite → boss
+Raid   (10-player): 7 rooms — trash → corridor → trash+elite → mini-boss → corridor → trash → final boss (phase 2 enrage)
 
 All combatants resolve in the same round tick:
   player → party members → surviving mobs counter-attack
@@ -68,11 +68,13 @@ _DUNGEON_NAMES = [
 ]
 
 _ROOM_NAMES = [
-    ["The Antechamber", "The Outer Hall", "The Entrance Passage"],
-    ["The Inner Sanctum", "The Warden's Hall", "The Sealed Chamber"],
-    ["The Boss Chamber", "The Throne Room", "The Inner Keep"],      # dungeon boss / raid mini-boss
-    ["The Deeper Reaches", "The Forsaken Hall", "The Blood Corridor"],  # raid only
-    ["The Final Sanctum", "The Throne of Ruin", "The Eternal Chamber"], # raid final boss
+    ["The Antechamber", "The Outer Hall", "The Entrance Passage"],          # 0: entrance trash
+    ["The Inner Sanctum", "The Warden's Hall", "The Sealed Chamber"],       # 1: trash+elite
+    ["The Boss Chamber", "The Throne Room", "The Inner Keep"],              # 2: dungeon boss / raid mini-boss
+    ["The Deeper Reaches", "The Forsaken Hall", "The Blood Corridor"],      # 3: raid deep trash
+    ["The Final Sanctum", "The Throne of Ruin", "The Eternal Chamber"],     # 4: raid final boss
+    ["The Dark Passage", "The Winding Corridor", "The Collapsed Tunnel",    # 5: corridor (light trash)
+     "The Echoing Hallway", "The Bloodstained Path"],
 ]
 
 # Mob type pools for dungeon rooms keyed by level tier
@@ -144,13 +146,15 @@ def _build_rooms(level: int, run_id: str, is_raid: bool = False) -> list[Dungeon
     # Dungeon: rooms 0-2 (3 rooms).  Raid: rooms 0-4 (5 rooms).
     room_defs = [
         # (name_index, count, force_boss, level_bump)
-        (0, 4, False, 0),
-        (1, 3, False, 0),
-        (2, 1, True,  0),    # dungeon boss / raid mini-boss
+        (0, 4, False, 0),   # entrance trash
+        (5, 2, False, 0),   # corridor — light trash
+        (1, 3, False, 0),   # main chamber
+        (2, 1, True,  0),   # boss
     ]
     if is_raid:
         room_defs += [
-            (3, 5, False, 1),   # deeper trash — harder (+1 level)
+            (5, 2, False, 1),   # corridor — deeper
+            (3, 5, False, 1),   # deep trash — harder (+1 level)
             (4, 1, True,  2),   # final boss — significantly harder (+2 levels)
         ]
 
@@ -401,19 +405,31 @@ def resolve_round(run: DungeonRun, player: Player) -> dict:
                  {"chance": 0.25, "rarity": "Epic",       "stat_mult": 4.0},
                  {"chance": 0.05, "rarity": "Legendary",  "stat_mult": 7.0}]
                 if run.is_raid else
-                [{"chance": 0.55, "rarity": "Uncommon",  "stat_mult": 1.5},
-                 {"chance": 0.25, "rarity": "Rare",       "stat_mult": 2.5},
-                 {"chance": 0.08, "rarity": "Epic",       "stat_mult": 4.0}]
+                [{"chance": 0.45, "rarity": "Uncommon",  "stat_mult": 1.5},
+                 {"chance": 0.35, "rarity": "Rare",       "stat_mult": 2.5},
+                 {"chance": 0.15, "rarity": "Epic",       "stat_mult": 4.0}]
             )
             for _ in range(rolls):
                 item = _roll_loot(boss.level, guaranteed_table,
                                   char_class=player.char_class, zone_tier=tier)
-                if item:
-                    if len(player.inventory) < BAG_SIZE:
-                        player.inventory.append(item)
+                if not item:
+                    continue
+                # Auto-equip if upgrade (same logic as open-world kills)
+                if item.slot:
+                    current  = player.equipment.get(item.slot)
+                    curr_sum = sum(current.stats.values()) if current and current.stats else 0
+                    new_sum  = sum(item.stats.values()) if item.stats else 0
+                    if new_sum > curr_sum:
+                        if current and current.name != "None" and len(player.inventory) < BAG_SIZE:
+                            player.inventory.append(current)
+                        player.equipment[item.slot] = item
                         loot_items.append(item.model_dump(mode='json'))
-                    else:
-                        loot_items.append({**item.model_dump(mode='json'), "_dropped": True})
+                        continue
+                if len(player.inventory) < BAG_SIZE:
+                    player.inventory.append(item)
+                    loot_items.append(item.model_dump(mode='json'))
+                else:
+                    loot_items.append({**item.model_dump(mode='json'), "_dropped": True})
 
     return {
         "run":          run.model_dump(mode='json'),
