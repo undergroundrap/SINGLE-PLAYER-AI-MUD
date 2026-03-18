@@ -169,6 +169,23 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [playerId, step, dungeonRun]);
 
+  // Poll zone every 10s so the action bar always reflects live mob state
+  // (patrol spawns, sim-player kills, respawns, etc.)
+  useEffect(() => {
+    if (!playerId || step !== 'game' || dungeonRun) return;
+    const interval = setInterval(async () => {
+      try {
+        const pRes = await fetch(`http://localhost:8000/player/${playerId}`);
+        if (!pRes.ok) return;
+        const pData = await pRes.json();
+        if (!pData.current_zone_id) return;
+        const zRes = await fetch(`http://localhost:8000/zone/${pData.current_zone_id}`);
+        if (zRes.ok) setZone(await zRes.json());
+      } catch { /* silent */ }
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [playerId, step, dungeonRun]);
+
   // ── Auto-attack loop ────────────────────────────────────────────────────
   // Fires another attack tick automatically after the cooldown expires,
   // keeping combat flowing without spamming the button each hit.
