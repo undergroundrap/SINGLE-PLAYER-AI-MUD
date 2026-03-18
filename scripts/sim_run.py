@@ -167,9 +167,10 @@ def alive_mobs_at(loc: dict) -> list[dict]:
 
 # ── Combat ────────────────────────────────────────────────────────────────────
 
-def attack_once(pid: str, mob_name: str) -> dict | None:
+def attack_once(pid: str, mob_name: str, dodged: bool = False) -> dict | None:
     for _ in range(5):
-        r = req("post", f"/action/attack/{pid}", params={"mob_name": mob_name})
+        r = req("post", f"/action/attack/{pid}",
+                params={"mob_name": mob_name, "dodged": str(dodged).lower()})
         if not r:
             return None
         if r.status_code == 429:
@@ -182,10 +183,17 @@ def attack_once(pid: str, mob_name: str) -> dict | None:
 
 
 def kill_mob(pid: str, mob_name: str, max_rounds: int = 80) -> dict | None:
-    """Attack until target_dead=True. Returns kill response or None."""
+    """
+    Attack until target_dead=True.
+    Detects pending_telegraph in the response and passes dodged=True on the next
+    attack call so the sim always dodges optimally (same as dungeon behaviour).
+    Returns the kill response or None on wipe/failure.
+    """
     time.sleep(1.6)
+    pending_dodge = False   # set True when backend returns a pending_telegraph
     for _ in range(max_rounds):
-        a = attack_once(pid, mob_name)
+        a = attack_once(pid, mob_name, dodged=pending_dodge)
+        pending_dodge = False   # consumed
         if a is None:
             return None
         if a.get("target_dead"):
@@ -194,6 +202,11 @@ def kill_mob(pid: str, mob_name: str, max_rounds: int = 80) -> dict | None:
             log(f"    ☠ Died fighting {mob_name} — respawned", R)
             time.sleep(1.0)
             return None
+        # If backend queued a telegraph, next round sim dodges it
+        tel = a.get("pending_telegraph")
+        if tel:
+            pending_dodge = True
+            log(f"    ⚠ [{mob_name}] telegraphs {tel.get('name','?')} → DODGING", C)
         time.sleep(1.6)
     log(f"    Gave up on {mob_name} after {max_rounds} rounds", Y)
     return None

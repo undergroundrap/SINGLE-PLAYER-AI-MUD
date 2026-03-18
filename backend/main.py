@@ -32,7 +32,8 @@ HARVEST_CD = 8.0   # seconds
 FISH_CD    = 12.0  # seconds — fishing is slower, more passive
 _potion_cooldowns: dict[str, float] = {}  # "{player_id}:heal" | "{player_id}:xp" -> last use time
 _active_xp_buffs:  dict[str, dict]  = {}  # player_id -> {"bonus_pct": int, "charges": int}
-_dungeon_runs:     dict[str, DungeonRun] = {}  # run_id -> DungeonRun (ephemeral)
+_dungeon_runs:       dict[str, DungeonRun] = {}  # run_id -> DungeonRun (ephemeral)
+_pending_telegraphs: dict[str, dict]      = {}  # player_id -> telegraph dict (open-world boss wind-ups)
 
 
 # ── Class passive proc table ───────────────────────────────────────────────
@@ -53,6 +54,13 @@ _CLASS_PROCS: dict[str, dict] = {
     "Warlock":  {"chance": 0.20, "type": "drain",  "mult": 1.5,  "label": "✧ SOUL DRAIN"},
     "Druid":    {"chance": 0.25, "type": "heal",   "mult": 0.15, "label": "✦ REJUVENATION"},
 }
+
+# ── Open-world telegraph names ────────────────────────────────────────────────
+# Named mobs: 20% chance, 2× damage — painful but survivable (teaches dodge before dungeons)
+# Elite mobs: 15% chance, 1.5× damage — noticeable tap
+_OW_TELEGRAPH_NAMED = ["Rending Slam", "Wild Charge", "Vicious Lunge", "Crushing Roar"]
+_OW_TELEGRAPH_ELITE = ["Heavy Strike", "Brute Rush", "Battering Blow"]
+
 
 def _apply_class_proc(player: "Player", target_mob: "Mob", messages: list) -> bool:
     """Roll the player's class passive proc. Returns True if mob counter-attack should be skipped."""
@@ -444,13 +452,16 @@ async def travel_to_zone(player_id: str, is_dungeon: bool = False, is_raid: bool
 # ──────────────────────────────────────────────
 
 @app.post("/action/attack/{player_id}")
-async def attack(player_id: str, mob_name: str):
+async def attack(player_id: str, mob_name: str, dodged: bool = False):
     # ── Rate limit ─────────────────────────────
+    # Dodge attacks bypass the cooldown — they resolve a previously-telegraphed hit
+    # and should feel instant. The actual attack still fires this round.
     now = time.time()
-    last = _attack_times.get(player_id, 0)
-    if now - last < ATTACK_COOLDOWN:
-        wait = round(ATTACK_COOLDOWN - (now - last), 2)
-        return {"success": False, "message": f"Not ready. ({wait}s remaining)", "on_cooldown": True}
+    if not dodged:
+        last = _attack_times.get(player_id, 0)
+        if now - last < ATTACK_COOLDOWN:
+            wait = round(ATTACK_COOLDOWN - (now - last), 2)
+            return {"success": False, "message": f"Not ready. ({wait}s remaining)", "on_cooldown": True}
     _attack_times[player_id] = now
 
     # ── Load state ─────────────────────────────
@@ -491,6 +502,16 @@ async def attack(player_id: str, mob_name: str):
 
     messages = []
     consider_text = _consider(target_mob.level, player.level)
+
+    # ── Resolve any pending open-world telegraph ───────────────────────────────
+    pending_tel = _pending_telegraphs.pop(player_id, None)
+    if pending_tel:
+        if dodged:
+            messages.append(f"  ☽ DODGED! {pending_tel['name']} misses you!")
+        else:
+            dmg = max(1, int(target_mob.damage * pending_tel["damage_mult"]))
+            player.hp = max(0, player.hp - dmg)
+            messages.append(f"  ⚡ {pending_tel['name']}! You take {dmg} damage!")
 
     # ── Combat resolution ──────────────────────
     atk_msgs, target_dead = combat_engine.resolve_tick(player, target_mob)
@@ -613,11 +634,29 @@ async def attack(player_id: str, mob_name: str):
                     mob.hp = target_mob.hp
                     break
 
+        # ── Queue open-world telegraph for next round ─────────────────────────
+        # Named mobs: 20% chance, 2× damage.  Elite mobs: 15% chance, 1.5× damage.
+        # Only queues if nothing already pending (one at a time).
+        if not player_dead and player_id not in _pending_telegraphs:
+            if target_mob.is_named and random.random() < 0.20:
+                name = random.choice(_OW_TELEGRAPH_NAMED)
+                _pending_telegraphs[player_id] = {
+                    "name": name, "damage_mult": 2.0, "window_ms": 3000
+                }
+                messages.append(f"  ⚠ {target_mob.name} winds up {name}! DODGE!")
+            elif target_mob.is_elite and not target_mob.is_named and random.random() < 0.15:
+                name = random.choice(_OW_TELEGRAPH_ELITE)
+                _pending_telegraphs[player_id] = {
+                    "name": name, "damage_mult": 1.5, "window_ms": 3000
+                }
+                messages.append(f"  ⚠ {target_mob.name} winds up {name}! DODGE!")
+
     # Always save zone so HP damage persists between attack requests
     await vec_db.save_zone(zone.id, zone.model_dump(mode='json'))
     sim_engine.mark_player_zone(zone.id, loc.name if loc else '')
 
     if player_dead:
+        _pending_telegraphs.pop(player_id, None)  # clear on death — no wind-up carries to respawn
         player.deaths += 1
         # Death penalty: lose 15 % of XP accumulated toward the current level
         xp_penalty = int(player.xp * 0.15)
@@ -664,6 +703,8 @@ async def attack(player_id: str, mob_name: str):
         "player_kills":         player.kills,
         # Return gear score whenever equipment or level changes so UI stays in sync
         "gear_score":           calculate_gear_score(player) if (leveled_up or auto_equipped) else None,
+        # Telegraph queued for next round (None if no wind-up active)
+        "pending_telegraph":    _pending_telegraphs.get(player_id),
         # Consumable state — frontend uses these to keep buff/cooldown display in sync
         "active_xp_buff":       _active_xp_buffs.get(player_id),
         "heal_cd":              max(0, int(POTION_HEAL_COOLDOWN - (now - _potion_cooldowns.get(f"{player_id}:heal", 0)))),

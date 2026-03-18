@@ -101,9 +101,15 @@ export default function Home() {
   const [dungeonRun, setDungeonRun] = useState<any>(null);
   const [dungeonAttacking, setDungeonAttacking] = useState<boolean>(false);
   const [telegraphActive, setTelegraphActive] = useState<boolean>(false);
-  const [dodgeTimeLeft, setDodgeTimeLeft] = useState<number>(0); // ms remaining
+  const [dodgeTimeLeft, setDodgeTimeLeft] = useState<number>(0); // ms remaining (dungeon)
   const dodgeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dodgeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Open-world telegraph (named/elite mobs)
+  const [owTelegraph, setOwTelegraph] = useState<any>(null); // pending_telegraph dict or null
+  const [owDodgeTimeLeft, setOwDodgeTimeLeft] = useState<number>(0);
+  const owTeleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const owTeleIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const owDodgePendingRef = useRef<boolean>(false); // consumed once per attack call
   const [gearScore, setGearScore] = useState<number>(0);
   // null → idle | 'choose' → pick what to delete | 'single' → confirm this char | 'all' → confirm wipe all
   const [resetConfirm, setResetConfirm] = useState<null | 'choose' | 'single' | 'all'>(null);
@@ -261,12 +267,47 @@ export default function Home() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dungeonRun?.pending_telegraph]);
 
+  // ── Open-world telegraph timer ───────────────────────────────────────────
+  // Same pattern as dungeon dodge, but for named/elite mobs in the open world.
+  // Auto-fires attack with dodged=false if player misses the window.
+  useEffect(() => {
+    if (!owTelegraph) {
+      if (owTeleTimerRef.current) { clearTimeout(owTeleTimerRef.current); owTeleTimerRef.current = null; }
+      if (owTeleIntervalRef.current) { clearInterval(owTeleIntervalRef.current); owTeleIntervalRef.current = null; }
+      setOwDodgeTimeLeft(0);
+      return;
+    }
+    const windowMs = owTelegraph.window_ms ?? 3000;
+    setOwDodgeTimeLeft(windowMs);
+    const start = Date.now();
+    owTeleIntervalRef.current = setInterval(() => {
+      setOwDodgeTimeLeft(Math.max(0, windowMs - (Date.now() - start)));
+    }, 50);
+    // Auto-fire with dodged=false on expiry
+    owTeleTimerRef.current = setTimeout(() => {
+      if (owTeleIntervalRef.current) { clearInterval(owTeleIntervalRef.current); owTeleIntervalRef.current = null; }
+      setOwTelegraph(null);
+      setOwDodgeTimeLeft(0);
+      // owDodgePendingRef stays false → next auto-attack fires normally (missed dodge = take hit)
+      if (autoAttackTarget && playerId) {
+        owDodgePendingRef.current = false;
+        executeCommand(`attack ${autoAttackTarget}`);
+      }
+    }, windowMs);
+    return () => {
+      if (owTeleTimerRef.current) { clearTimeout(owTeleTimerRef.current); owTeleTimerRef.current = null; }
+      if (owTeleIntervalRef.current) { clearInterval(owTeleIntervalRef.current); owTeleIntervalRef.current = null; }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [owTelegraph]);
+
   // ── Auto-attack loop ────────────────────────────────────────────────────
   // Fires another attack tick automatically after the cooldown expires,
   // keeping combat flowing without spamming the button each hit.
   useEffect(() => {
     if (!autoAttackTarget || !playerId || step !== 'game') return;
     if (isAttacking) return; // already mid-request
+    if (owTelegraph) return; // pause during telegraph dodge window — useEffect re-fires when owTelegraph clears
 
     const fire = () => {
       executeCommand(`attack ${autoAttackTarget}`);
@@ -277,7 +318,7 @@ export default function Home() {
       if (autoAttackRef.current) clearTimeout(autoAttackRef.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoAttackTarget, isAttacking]);
+  }, [autoAttackTarget, isAttacking, owTelegraph]);
 
   // ── Cooldown progress bar animation ────────────────────────────────────
   useEffect(() => {
@@ -734,6 +775,7 @@ export default function Home() {
       return makeResourceFrame('Fishing', s, fishBarRef, 'linear-gradient(to right, #1a4a7a, #4ab8e0)', 'rgba(74,184,224,0.5)', '#1a4a7a');
     }
     if (!target) return null;
+    const dodgePct = owTelegraph ? Math.max(0, (owDodgeTimeLeft / (owTelegraph.window_ms ?? 3000)) * 100) : 0;
     return (
       <div className="target-frame">
         <div className="glass-panel target-panel">
@@ -751,6 +793,24 @@ export default function Home() {
             <p style={{ margin: '6px 0 0', fontSize: '11px', lineHeight: '1.4', color: '#a07850', fontStyle: 'italic', opacity: 0.85 }}>
               {targetDescription}
             </p>
+          )}
+          {/* ── Open-world DODGE window ── */}
+          {owTelegraph && (
+            <button
+              className="tool-button w-full mt-2 relative overflow-hidden animate-pulse !text-yellow-300 !border-yellow-600/80 !bg-yellow-900/20 !text-xs !py-1"
+              onClick={() => {
+                // Cancel auto-fire timer, signal dodge, fire attack immediately
+                if (owTeleTimerRef.current) { clearTimeout(owTeleTimerRef.current); owTeleTimerRef.current = null; }
+                if (owTeleIntervalRef.current) { clearInterval(owTeleIntervalRef.current); owTeleIntervalRef.current = null; }
+                setOwTelegraph(null);
+                setOwDodgeTimeLeft(0);
+                owDodgePendingRef.current = true;
+                if (autoAttackTarget) executeCommand(`attack ${autoAttackTarget}`);
+              }}
+            >
+              <div className="absolute left-0 top-0 h-full bg-yellow-600/30 transition-none" style={{ width: `${dodgePct}%` }} />
+              <span className="relative z-10">☽ DODGE — {owTelegraph.name}</span>
+            </button>
           )}
         </div>
       </div>
@@ -2033,8 +2093,12 @@ export default function Home() {
             setIsAttacking(true);
             setLastCombatTime(Date.now());
 
+            // Consume the dodge flag if one was set (DODGE button click or auto-fire after miss)
+            const isDodge = owDodgePendingRef.current;
+            owDodgePendingRef.current = false;
+
             const res = await fetch(
-              `http://localhost:8000/action/attack/${playerId}?mob_name=${encodeURIComponent(targetStr)}`,
+              `http://localhost:8000/action/attack/${playerId}?mob_name=${encodeURIComponent(targetStr)}&dodged=${isDodge}`,
               { method: 'POST' }
             );
             const data = await res.json();
@@ -2167,6 +2231,9 @@ export default function Home() {
               });
 
               if (data.target_dead) {
+                // Mob died — clear any pending telegraph
+                setOwTelegraph(null);
+                owDodgePendingRef.current = false;
                 const restedTag = data.rested_bonus > 0 ? ` 💤(+${data.rested_bonus} rested)` : '';
                 const killLine = `${nameplate ? nameplate + ' ' : ''}${data.target_name} slain. +${data.xp_gained} XP${restedTag}${data.gold_gained ? ` +${data.gold_gained}g` : ''}`;
                 addLog(killLine, "system");
@@ -2217,8 +2284,14 @@ export default function Home() {
                   )
                 }));
 
-                // Continue auto-attack
-                setAutoAttackTarget(targetStr);
+                // Telegraph — pause auto-attack and show DODGE button
+                if (data.pending_telegraph) {
+                  setOwTelegraph(data.pending_telegraph);
+                  // auto-attack loop will pause because owTelegraph is set
+                } else {
+                  // Continue auto-attack normally
+                  setAutoAttackTarget(targetStr);
+                }
               }
 
               if (data.player_dead) {
