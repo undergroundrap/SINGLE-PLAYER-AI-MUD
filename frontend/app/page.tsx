@@ -1440,7 +1440,7 @@ export default function Home() {
         addLog("POTIONS   use healing · use elixir  (or click USE in side panel)", "hint");
         addLog("ECONOMY   shop · buy [item] · sell [item] · sell junk", "hint");
         addLog("TRAVEL    travel · travel dungeon (lv10+) · travel raid (lv20+)", "hint");
-        addLog("DUNGEON   attack · flee  (inside dungeon: advance auto-triggers)", "hint");
+        addLog("DUNGEON   attack · flee · advance  (use buttons or type commands in dungeon)", "hint");
         addLog("Any other input → AI narrative engine", "hint");
         addLog("══════════════════════════════", "system");
       } else if (lowerCmd.startsWith('look ') || lowerCmd === 'look') {
@@ -2243,7 +2243,12 @@ export default function Home() {
         })();
 
       } else if (lowerCmd === 'flee' || lowerCmd === 'escape' || lowerCmd === 'disengage') {
-        if (!autoAttackTarget) {
+        // In dungeon mode: flee exits the dungeon instance
+        if (dungeonRun) {
+          await fetch(`http://localhost:8000/dungeon/flee/${dungeonRun.id}?player_id=${playerId}`, { method: 'POST' }).catch(() => {});
+          setDungeonRun(null);
+          addLog('You flee the dungeon.', 'system');
+        } else if (!autoAttackTarget) {
           addLog("You are not in combat.", "hint");
         } else {
           const fleeMob = autoAttackTarget;
