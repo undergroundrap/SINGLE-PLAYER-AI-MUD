@@ -65,6 +65,7 @@ export default function Home() {
   const [input, setInput] = useState<string>("");
   const [worldInput, setWorldInput] = useState<string>("");
   const [target, setTarget] = useState<any>(null);
+  const [targetDescription, setTargetDescription] = useState<string>('');
   const [combatFlash, setCombatFlash] = useState<boolean>(false);
   const [activeLoot, setActiveLoot] = useState<any>(null);
   const [isTalking, setIsTalking] = useState<boolean>(false);
@@ -100,6 +101,8 @@ export default function Home() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const seenEntities = useRef<Set<string>>(new Set());
+  const entityDescCache = useRef<Map<string, string>>(new Map());
+  const seenWorldMessages = useRef<Set<string>>(new Set());
   const isInCombatRef = useRef(false); // kept in sync with autoAttackTarget
   const idleChatAbortRef = useRef<AbortController | null>(null); // aborted on mob kill to free LM Studio
   const chatMsgCountRef = useRef(0);
@@ -351,7 +354,13 @@ export default function Home() {
           const data = await res.json();
           if (data) {
             setZone(data);
-
+            const msgs: string[] = data.world_messages || [];
+            msgs.forEach((msg: string) => {
+              if (!seenWorldMessages.current.has(msg)) {
+                seenWorldMessages.current.add(msg);
+                addLog(`🌐 ${msg}`, 'hint');
+              }
+            });
           }
         } catch (e) { console.error("Ticker failed", e); }
       }, 5000);
@@ -624,6 +633,11 @@ export default function Home() {
               style={{ width: `${(target.hp / (target.max_hp || 100)) * 100}%` }}
             />
           </div>
+          {targetDescription && (
+            <p style={{ margin: '6px 0 0', fontSize: '11px', lineHeight: '1.4', color: '#a07850', fontStyle: 'italic', opacity: 0.85 }}>
+              {targetDescription}
+            </p>
+          )}
         </div>
       </div>
     );
@@ -1140,6 +1154,11 @@ export default function Home() {
         if (d.description) {
           // Fill the reserved slot in-place — stays where it was inserted
           setLogs(prev => prev.map(e => e.id === slotId ? { ...e, text: d.description } : e));
+          // Pin to target frame for creatures (not NPCs or death scenes)
+          if (!opts.isNpc && !opts.isDeath) {
+            entityDescCache.current.set(name, d.description);
+            setTargetDescription(d.description);
+          }
         } else {
           // No content — remove the whole placeholder block
           setLogs(prev => {
@@ -1882,6 +1901,13 @@ export default function Home() {
 
             // Elite/Named announcement
             const nameplate = data.target_is_named ? "⚑ NAMED" : data.target_is_elite ? "★ ELITE" : "";
+            setTarget((prev: any) => {
+              if (prev?.name !== data.target_name) {
+                const cached = entityDescCache.current.get(data.target_name);
+                setTargetDescription(cached ?? '');
+              }
+              return prev;
+            });
             setTarget({
               name: data.target_name,
               hp: data.mob_hp,
@@ -2752,7 +2778,7 @@ export default function Home() {
           {dungeonRun
             ? renderDungeonTheater()
             : (
-              <div className="glass-panel terminal-wrapper flex-1">
+              <div className={`glass-panel terminal-wrapper flex-1${autoAttackTarget ? ' combat-pulse' : ''}`}>
                 <div className="terminal-output" ref={scrollRef}>
                   {logs.map((log, i) => (
                     <div key={i} className={`terminal-line log-${log.type}`}>

@@ -372,7 +372,8 @@ async def move_player(player_id: str, location_id: str):
             await vec_db.save_zone(zone.id, zone.model_dump(mode='json'))
 
     await vec_db.save_player(player_id, player.model_dump(mode='json'))
-    sim_engine.mark_player_zone(player.current_zone_id)
+    loc_name = dest_loc.name if dest_loc else ''
+    sim_engine.mark_player_zone(player.current_zone_id, loc_name)
     return {"success": True, "location_id": location_id, "explore_completed": explore_completed}
 
 
@@ -608,7 +609,7 @@ async def attack(player_id: str, mob_name: str):
 
     # Always save zone so HP damage persists between attack requests
     await vec_db.save_zone(zone.id, zone.model_dump(mode='json'))
-    sim_engine.mark_player_zone(zone.id)
+    sim_engine.mark_player_zone(zone.id, loc.name if loc else '')
 
     if player_dead:
         player.deaths += 1

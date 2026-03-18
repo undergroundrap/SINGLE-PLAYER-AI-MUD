@@ -473,6 +473,15 @@ body.combat-flash {
   height: 100%;
 }
 
+@keyframes combat-border-pulse {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(180, 0, 0, 0.2), inset 0 0 0 1px rgba(180, 0, 0, 0.1); }
+  50%       { box-shadow: 0 0 18px 4px rgba(200, 0, 0, 0.55), inset 0 0 12px 2px rgba(180, 0, 0, 0.2); }
+}
+
+.combat-pulse {
+  animation: combat-border-pulse 1.8s ease-in-out infinite;
+}
+
 .terminal-output {
   flex: 1;
   overflow-y: auto !important;

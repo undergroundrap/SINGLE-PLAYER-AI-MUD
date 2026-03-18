@@ -10,12 +10,12 @@ import math
 class SimulationEngine:
     def __init__(self):
         self.active_zones: Dict[str, float] = {} # zone_id -> last_tick_time
-        self.player_zones: set[str] = set()       # zone_ids with a real player present
+        self.player_zones: dict[str, str] = {}       # zone_ids with a real player present
         self.running = False
 
-    def mark_player_zone(self, zone_id: str):
+    def mark_player_zone(self, zone_id: str, location_name: str = ""):
         """Track only the current zone — replace old entry so stale zones stop generating ambiance."""
-        self.player_zones = {zone_id}
+        self.player_zones = {zone_id: location_name}
 
     async def start(self):
         if self.running: return
@@ -127,7 +127,9 @@ class SimulationEngine:
         tod = z_data.get('time_of_day', 0.5)
         time_str = "night" if (tod < 0.25 or tod > 0.85) else "dawn" if tod < 0.35 else "dusk" if tod > 0.75 else "day"
 
-        ctx_parts = [f"Zone: {zone.name}", f"Weather: {weather}", f"Time: {time_str}"]
+        pick_loc = self.player_zones.get(zone_id, '') or zone.name
+
+        ctx_parts = [f"Location: {pick_loc}", f"Weather: {weather}", f"Time: {time_str}"]
         if mob_ctx:
             ctx_parts.append(f"Active creatures: {mob_ctx}")
         context = ". ".join(ctx_parts)
@@ -136,12 +138,11 @@ class SimulationEngine:
         prompt = (
             f"{context}.\n"
             f"Write ONE MUD server notification, 8-12 words. "
-            f"It must mention a specific creature or weather detail from the context above. "
+            f"Mention a specific location name and creature from the context above. "
             f"Style examples (vary the pattern): "
-            f"'A {first_mob} darts through the undergrowth to the north.' "
-            f"'The {weather} weather worsens — watch your footing.' "
-            f"'You hear {first_mob}s moving nearby.' "
-            f"'A pack of {first_mob}s emerges from the treeline.' "
+            f"'A {first_mob} darts through {pick_loc} to the north.' "
+            f"'You hear {first_mob}s moving near {pick_loc}.' "
+            f"'A pack of {first_mob}s emerges from {pick_loc}.' "
             f"Output only the notification. No poetry, no metaphors, no asterisks."
         )
         system_prompt = "You are a MUD game server. Output only the notification text, no quotes."
