@@ -1502,8 +1502,8 @@ async def describe_entity(
         )
     elif entity_type == "death":
         prompt = (
-            f"Write a 2-sentence dramatic death scene. The player was killed by a {rank}{name}{location}. "
-            f"Describe the fatal moment vividly. No stats, no markdown, past tense."
+            f"Write a 2-sentence dramatic death scene. The {rank}{name}{location} is slain by the player. "
+            f"Describe the creature's final moments vividly — its death, not the player's. No stats, no markdown, past tense."
         )
     else:
         prompt = (
