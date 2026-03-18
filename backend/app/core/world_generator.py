@@ -272,7 +272,7 @@ def _scaled_mult(level: int, low: float, high: float, ramp_end: int = 10) -> flo
     return low + t * (high - low)
 
 
-def _make_mobs(mob_name: str, mob_level: int, zone_id: str, loc_index: int, count: int = 3, force_boss: bool = False) -> list:
+def _make_mobs(mob_name: str, mob_level: int, zone_id: str, loc_index: int, count: int = 3, force_boss: bool = False, zone_difficulty_mult: float = 1.0) -> list:
     mobs = []
     named_spawned = False
     for j in range(count):
@@ -300,8 +300,8 @@ def _make_mobs(mob_name: str, mob_level: int, zone_id: str, loc_index: int, coun
             desc = f"A menacing {mob_name}."
             hp_mult, dmg_mult = 1.0, 1.0
 
-        base_hp  = ScalingMath.get_max_hp(mob_level)
-        base_dmg = ScalingMath.get_damage(mob_level)
+        base_hp  = int(ScalingMath.get_max_hp(mob_level)  * zone_difficulty_mult)
+        base_dmg = int(ScalingMath.get_damage(mob_level) * zone_difficulty_mult)
         mobs.append(Mob(
             id=f"mob_{zone_id}_{loc_index}_{j}",
             name=name,
@@ -411,7 +411,7 @@ _STARTER_TEMPLATES = [
 
 class WorldGenerator:
     @staticmethod
-    async def generate_zone(level: int, is_dungeon: bool = False, is_raid: bool = False) -> Zone:
+    async def generate_zone(level: int, is_dungeon: bool = False, is_raid: bool = False, zone_difficulty_mult: float = 1.0) -> Zone:
 
         # 0. Starter Templates (Levels 1-5)
         if level <= 5 and not is_dungeon and not is_raid:
@@ -469,7 +469,7 @@ class WorldGenerator:
                         name=tpl["pois"][i][0],
                         description=tpl["pois"][i][1],
                         exits={opp: path_ids[i]},
-                        mobs=_make_mobs(mob_name, level, zone_id, i, count=4)
+                        mobs=_make_mobs(mob_name, level, zone_id, i, count=4, zone_difficulty_mult=zone_difficulty_mult)
                     ))
 
             quests = []
@@ -731,7 +731,7 @@ class WorldGenerator:
                 if is_boss_chamber:
                     loc_name = f"{loc_name} [BOSS]"
                     loc_desc = f"{loc_desc} A powerful guardian waits here."
-                mobs = _make_mobs(mob_for_poi, level, zone_id, i, count=mob_count, force_boss=is_boss_chamber)
+                mobs = _make_mobs(mob_for_poi, level, zone_id, i, count=mob_count, force_boss=is_boss_chamber, zone_difficulty_mult=zone_difficulty_mult)
 
             locations.append(Location(
                 id=poi_id,

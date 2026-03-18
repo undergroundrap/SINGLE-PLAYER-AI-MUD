@@ -263,7 +263,11 @@ def resolve_round(run: DungeonRun, player: Player, dodged: bool = False) -> dict
         run.pending_telegraph = None
 
     # ── 1. Player attacks primary mob ────────────────────────────────────────
-    atk_msgs, mob_dead = combat_engine.resolve_tick(player, primary_mob)
+    # Apply ascension damage multiplier via a combat copy so the base stat in DB
+    # is never inflated (same pattern as open-world combat in main.py).
+    combat_player = player.model_copy()
+    combat_player.damage = max(1, int(player.damage * player.ascension_damage_mult))
+    atk_msgs, mob_dead = combat_engine.resolve_tick(combat_player, primary_mob)
     round_log.extend(atk_msgs)
 
     # ── 2. Each living party member acts ────────────────────────────────────

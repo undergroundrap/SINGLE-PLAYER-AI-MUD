@@ -3,14 +3,16 @@ sim_run.py — Headless game simulation following the full progression meta.
 
 Plays the complete game loop automatically:
   Open world sweeps → level 10 → dungeon loop (until GS 100 + level 20)
-  → raid loop (until zone travel gate met) → zone travel
+  → raid loop (until zone travel gate met) → zone travel → ascension
 
 Usage:
-    python scripts/sim_run.py                   # full meta run
-    python scripts/sim_run.py --quick           # one sweep + one dungeon, then stop
-    python scripts/sim_run.py --no-cleanup      # keep character after run
-    python scripts/sim_run.py --skip-to-dungeon # boost to lv10 ~94 GS, skip Phase 1
-    python scripts/sim_run.py --skip-to-raid    # boost to lv20 ~280 GS, skip Phases 1+2
+    python scripts/sim_run.py                       # full meta run
+    python scripts/sim_run.py --quick               # one sweep + one dungeon, then stop
+    python scripts/sim_run.py --no-cleanup          # keep character after run
+    python scripts/sim_run.py --skip-to-dungeon     # boost to lv10 ~94 GS, skip Phase 1
+    python scripts/sim_run.py --skip-to-raid        # boost to lv20 ~280 GS, skip Phases 1+2
+    python scripts/sim_run.py --skip-to-ascend      # boost to zone 10, test ascension endpoint
+    python scripts/sim_run.py --ascensions 10       # apply 10 ascension stacks, verify mult
     python scripts/sim_run.py --base http://localhost:8001
 
 Exits 0 on a clean run, 1 on any hard error.
@@ -31,6 +33,10 @@ parser.add_argument("--skip-to-dungeon", action="store_true",
                     help="Instantly boost to level 10 ~94 GS, skip Phase 1 (saves ~35-50 min)")
 parser.add_argument("--skip-to-raid", action="store_true",
                     help="Instantly boost to level 20 ~280 GS, skip Phases 1+2 (saves ~60-90 min)")
+parser.add_argument("--skip-to-ascend", action="store_true",
+                    help="Boost to zone 10 and immediately test the /ascend endpoint")
+parser.add_argument("--ascensions", type=int, default=0,
+                    help="Apply N ascension stacks via /admin/force_ascend before running — verify damage mult")
 parser.add_argument("--name", default="SimBot")
 args = parser.parse_args()
 
@@ -954,6 +960,59 @@ else:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 4 — ASCENSION TEST (--skip-to-ascend or --ascensions N)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+if args.skip_to_ascend:
+    section("PHASE 4 — ASCENSION TEST (--skip-to-ascend)")
+    # Boost to raid-tier so GS 1000 is reachable, then force zone_number to 10
+    r = req("post", f"/admin/boost/{pid}", params={"level": RAID_LEVEL_GATE, "preset": "raid"})
+    if r and r.status_code == 200:
+        bd = r.json()
+        log(f"Boosted to Lv{bd['level']}  HP {bd['hp']}  DMG {bd['damage']}  GS {bd['gear_score']}", G)
+    else:
+        warn(f"Boost failed: {r.status_code if r else 'no response'}")
+
+    # Force zone 10 (also sets ascension_count=0, mult=1.0 — clean baseline)
+    r = req("post", f"/admin/force_ascend/{pid}", params={"ascensions": 0})
+    if r and r.status_code == 200:
+        fa = r.json()
+        log(f"Zone set to 10  ·  Mult: {fa.get('ascension_damage_mult', '?')}", G)
+    else:
+        warn(f"force_ascend to zone 10 failed: {r.status_code if r else 'no response'}")
+
+    # Attempt ascension
+    r = req("post", f"/ascend/{pid}")
+    if r and r.status_code == 200:
+        ad = r.json()
+        expected_mult = round(1.15 ** 1, 6)
+        actual_mult   = ad.get("ascension_damage_mult", 0)
+        log(f"✓ Ascension 1 complete  ·  Mult: {actual_mult}  (expected ~{expected_mult})", G)
+        if abs(actual_mult - expected_mult) > 0.001:
+            warn(f"Damage mult mismatch — got {actual_mult}, expected {expected_mult}")
+        milestone("ASCENSION 1 — Phase 4 Complete", pid)
+    else:
+        warn(f"Ascension failed: {r.json().get('detail', r.text[:80]) if r else 'no response'}")
+
+elif args.ascensions > 0:
+    section(f"PHASE 4 — ASCENSION STACK TEST (--ascensions {args.ascensions})")
+    r = req("post", f"/admin/force_ascend/{pid}", params={"ascensions": args.ascensions})
+    if r and r.status_code == 200:
+        fa = r.json()
+        expected_mult = round(1.15 ** args.ascensions, 6)
+        actual_mult   = fa.get("ascension_damage_mult", 0)
+        log(f"✓ Applied {args.ascensions} ascensions  ·  Mult: {actual_mult}  (expected ~{expected_mult:.4f})", G)
+        if abs(actual_mult - expected_mult) > 0.01:
+            warn(f"Damage mult mismatch — got {actual_mult}, expected {expected_mult:.6f}")
+        p, gs = fresh_player(pid)
+        log(f"  ascension_count={p.get('ascension_count','?')}  "
+            f"ascension_damage_mult={p.get('ascension_damage_mult','?')}  "
+            f"current_zone_number={p.get('current_zone_number','?')}", DIM)
+    else:
+        warn(f"force_ascend failed: {r.status_code if r else 'no response'}")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # COMBAT ANALYTICS
 # ═══════════════════════════════════════════════════════════════════════════════
 section("COMBAT ANALYTICS")
@@ -978,6 +1037,8 @@ log(f"Kills:    {p['kills']}", W)
 log(f"Deaths:   {p['deaths']}", W)
 log(f"Dungeons: {p.get('dungeons_cleared', 0)}", W)
 log(f"Raids:    {p.get('raids_cleared', 0)}", W)
+log(f"Zone:     {p.get('current_zone_number', 1)} / 10", W)
+log(f"Ascension:{p.get('ascension_count', 0)}  ·  DMG mult ×{p.get('ascension_damage_mult', 1.0):.4f}", W)
 log(f"Quests completed: {len(p.get('completed_quest_ids', []))}", W)
 
 log("Equipment:", W)

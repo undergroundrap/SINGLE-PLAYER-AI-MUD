@@ -422,10 +422,22 @@ async def travel_to_zone(player_id: str, is_dungeon: bool = False, is_raid: bool
                 status_code=400,
                 detail=f"Gear score too low to move on. ({current_gs}/{required_gs} GS) — clear dungeons and raids to earn better gear."
             )
+        # Zone 10 is the ascension wall — travel is blocked. Player must Ascend.
+        if player.current_zone_number >= 10:
+            raise HTTPException(
+                status_code=400,
+                detail="You have reached Zone 10 — the Ascension Wall. Ascend to break through and carry your power into the next cycle."
+            )
+        # Advance the zone arc counter (1→10)
+        player.current_zone_number = min(10, player.current_zone_number + 1)
+
+    # Difficulty ramps with zone number: Zone 1 = 1.0×, Zone 10 = 2.8× mob HP/dmg.
+    # Ascension damage mult on the player counteracts this, getting faster each cycle.
+    zone_difficulty_mult = 1.0 + (player.current_zone_number - 1) * 0.2
 
     # Each completed raid pushes open-world zones 3 levels harder — infinite tier progression
     zone_level = player.level + (player.raids_cleared * 3)
-    new_zone = await world_gen.generate_zone(level=zone_level, is_dungeon=is_dungeon, is_raid=is_raid)
+    new_zone = await world_gen.generate_zone(level=zone_level, is_dungeon=is_dungeon, is_raid=is_raid, zone_difficulty_mult=zone_difficulty_mult)
     await vec_db.save_zone(new_zone.id, new_zone.model_dump(mode='json'))
 
     if not new_zone.locations:
@@ -436,7 +448,119 @@ async def travel_to_zone(player_id: str, is_dungeon: bool = False, is_raid: bool
         player.visited_zone_ids = player.visited_zone_ids + [new_zone.id]
 
     await vec_db.save_player(player_id, player.model_dump(mode='json'))
-    return {"success": True, "zone": new_zone}
+    return {"success": True, "zone": new_zone, "zone_number": player.current_zone_number}
+
+
+# ──────────────────────────────────────────────
+# ASCENSION
+# ──────────────────────────────────────────────
+
+_ASCENSION_MULT_PER_LEVEL = 1.15  # compound ×1.15 damage every ascension
+
+def _default_equipment() -> dict:
+    """Return starter gear identical to the Player schema default."""
+    return {
+        "head":      Item(id="start_head",    name="None",             description="Empty slot.",                               stats={},           slot="head").model_dump(mode='json'),
+        "chest":     Item(id="start_chest",   name="Ragged Tunic",     description="A worn tunic for new adventurers.",         stats={"armor": 2}, slot="chest").model_dump(mode='json'),
+        "hands":     Item(id="start_hands",   name="None",             description="Empty slot.",                               stats={},           slot="hands").model_dump(mode='json'),
+        "legs":      Item(id="start_legs",    name="Worn Trousers",    description="Sturdy but old trousers.",                  stats={"armor": 1}, slot="legs").model_dump(mode='json'),
+        "feet":      Item(id="start_feet",    name="Old Boots",        description="Comfortable but thin-soled boots.",        stats={"armor": 1}, slot="feet").model_dump(mode='json'),
+        "main_hand": Item(id="start_weapon",  name="Rusty Shortsword", description="A trustworthy if slightly oxidized blade.", stats={"damage": 3}, slot="main_hand").model_dump(mode='json'),
+        "off_hand":  Item(id="start_offhand", name="None",             description="Empty slot.",                               stats={},           slot="off_hand").model_dump(mode='json'),
+    }
+
+
+@app.post("/ascend/{player_id}")
+async def ascend(player_id: str):
+    """
+    Ascension — the meta-progression reset.
+    Requires the player to be at Zone 10.
+    Resets all per-cycle progression (level, gear, gold, quests, zone progress).
+    Permanently compounds the ascension_damage_mult by ×1.15 and increments ascension_count.
+    """
+    p_data = await vec_db.get_player(player_id)
+    if not p_data: raise HTTPException(status_code=404, detail="Player not found")
+    player = Player(**p_data)
+
+    if player.current_zone_number < 10:
+        raise HTTPException(
+            status_code=400,
+            detail=f"You must reach Zone 10 before ascending. (Currently Zone {player.current_zone_number})"
+        )
+
+    # Carry forward the ascension stats
+    new_ascension_count = player.ascension_count + 1
+    new_damage_mult     = round(player.ascension_damage_mult * _ASCENSION_MULT_PER_LEVEL, 6)
+
+    # Class base stats for level 1
+    hp_mult, dmg_mult = CLASS_STATS.get(player.char_class, (1.0, 1.0))
+    new_max_hp = int(ScalingMath.get_max_hp(1) * hp_mult)
+    new_damage  = int(ScalingMath.get_damage(1) * dmg_mult)
+
+    # Full reset — only ascension state carries over
+    player.level              = 1
+    player.hp                 = new_max_hp
+    player.max_hp             = new_max_hp
+    player.damage             = new_damage
+    player.xp                 = 0
+    player.next_level_xp      = ScalingMath.get_xp_required(1)
+    player.gold               = 0
+    player.kills              = 0
+    player.deaths             = player.deaths        # lifetime — keep
+    player.inventory          = []
+    player.active_quests      = []
+    player.completed_quest_ids = []
+    player.visited_zone_ids   = []
+    player.equipment          = {k: Item(**v) for k, v in _default_equipment().items()}
+    player.rested_xp          = 0
+    player.last_logout_time   = 0.0
+    player.active_dungeon_run_id = None
+    player.dungeons_cleared   = 0
+    player.raids_cleared      = 0
+    player.current_zone_number = 1
+    player.ascension_count    = new_ascension_count
+    player.ascension_damage_mult = new_damage_mult
+
+    # Generate a fresh starter zone
+    new_zone = await world_gen.generate_zone(level=1)
+    await vec_db.save_zone(new_zone.id, new_zone.model_dump(mode='json'))
+    player.current_zone_id      = new_zone.id
+    player.current_location_id  = new_zone.locations[0].id if new_zone.locations else ""
+    player.visited_zone_ids     = [new_zone.id]
+
+    await vec_db.save_player(player_id, player.model_dump(mode='json'))
+    return {
+        "success": True,
+        "ascension_count": new_ascension_count,
+        "ascension_damage_mult": new_damage_mult,
+        "zone": new_zone,
+    }
+
+
+@app.post("/admin/force_ascend/{player_id}")
+async def force_ascend(player_id: str, ascensions: int = 1):
+    """
+    Debug endpoint — instantly apply N ascension stacks without zone-10 requirement.
+    Sets ascension_count and recomputes ascension_damage_mult from scratch.
+    Does NOT reset the character — for balance testing at high ascension counts.
+    """
+    if ascensions < 1 or ascensions > 9999:
+        raise HTTPException(status_code=400, detail="ascensions must be 1–9999")
+    p_data = await vec_db.get_player(player_id)
+    if not p_data: raise HTTPException(status_code=404, detail="Player not found")
+    player = Player(**p_data)
+
+    player.ascension_count       = ascensions
+    player.ascension_damage_mult = round(_ASCENSION_MULT_PER_LEVEL ** ascensions, 6)
+    player.current_zone_number   = 10  # put them at the wall for easy testing
+
+    await vec_db.save_player(player_id, player.model_dump(mode='json'))
+    return {
+        "success": True,
+        "ascension_count": player.ascension_count,
+        "ascension_damage_mult": player.ascension_damage_mult,
+        "current_zone_number": player.current_zone_number,
+    }
 
 
 # ──────────────────────────────────────────────
@@ -506,7 +630,11 @@ async def attack(player_id: str, mob_name: str, dodged: bool = False):
             messages.append(f"  ⚡ {pending_tel['name']}! You take {dmg} damage!")
 
     # ── Combat resolution ──────────────────────
-    atk_msgs, target_dead = combat_engine.resolve_tick(player, target_mob)
+    # Apply ascension damage multiplier to a temporary combat copy so the base
+    # stat stored in the DB is never inflated by the accumulated bonus.
+    combat_player = player.model_copy()
+    combat_player.damage = max(1, int(player.damage * player.ascension_damage_mult))
+    atk_msgs, target_dead = combat_engine.resolve_tick(combat_player, target_mob)
     messages.extend(atk_msgs)
 
     # Class passive proc — fires between player attack and mob counter-attack

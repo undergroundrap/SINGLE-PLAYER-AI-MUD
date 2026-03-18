@@ -48,6 +48,17 @@ function questNewProgress(q: any, targetName: string, targetIsNamed: boolean, ta
   return tracked ? Math.min(q.target_count, q.current_progress + 1) : null;
 }
 
+/** Format large numbers with K/M/B/T suffixes, then scientific notation beyond that. */
+function fmt(n: number): string {
+  if (!isFinite(n) || isNaN(n)) return '0';
+  if (n < 1_000) return String(Math.floor(n));
+  if (n < 1_000_000) return (n / 1_000).toFixed(1).replace(/\.0$/, '') + 'K';
+  if (n < 1_000_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (n < 1_000_000_000_000) return (n / 1_000_000_000).toFixed(1).replace(/\.0$/, '') + 'B';
+  if (n < 1e15) return (n / 1e12).toFixed(1).replace(/\.0$/, '') + 'T';
+  return n.toExponential(2);
+}
+
 export default function Home() {
   const [player, setPlayer] = useState<any>(null);
   const [playerId, setPlayerId] = useState<string | null>(null);
@@ -111,6 +122,7 @@ export default function Home() {
   const owTeleIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const owDodgePendingRef = useRef<boolean>(false); // consumed once per attack call
   const [gearScore, setGearScore] = useState<number>(0);
+  const [showHowToPlay, setShowHowToPlay] = useState<boolean>(false);
   // null → idle | 'choose' → pick what to delete | 'single' → confirm this char | 'all' → confirm wipe all
   const [resetConfirm, setResetConfirm] = useState<null | 'choose' | 'single' | 'all'>(null);
   const autoAttackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1755,6 +1767,7 @@ export default function Home() {
         addLog("POTIONS   use healing · use elixir  (or click USE in side panel)", "hint");
         addLog("ECONOMY   shop · buy [item] · sell [item] · sell junk", "hint");
         addLog("TRAVEL    travel · travel dungeon (lv10+) · travel raid (lv20+)", "hint");
+        addLog("ASCEND    ascend  (at Zone 10 — resets cycle, keeps ×1.15 damage buff forever)", "hint");
         addLog("DUNGEON   attack · flee · advance  (use buttons or type commands in dungeon)", "hint");
         addLog("Any other input → AI narrative engine", "hint");
         addLog("══════════════════════════════", "system");
@@ -2854,6 +2867,46 @@ export default function Home() {
           }
         }
 
+      } else if (lowerCmd === 'ascend' || lowerCmd === 'ascension') {
+        const zoneNum = player?.current_zone_number ?? 1;
+        if (zoneNum < 10) {
+          addLog(`You must reach Zone 10 to Ascend. (Currently Zone ${zoneNum} / 10)`, "error");
+        } else {
+          addLog("✦ ASCENDING — your power transcends this cycle...", "system");
+          try {
+            const res = await fetch(`http://localhost:8000/ascend/${playerId}`, { method: 'POST' });
+            if (!res.ok) {
+              const err = await res.json();
+              addLog(err.detail || "Ascension failed.", "error");
+            } else {
+              const data = await res.json();
+              const newZone = data.zone;
+              setZone(newZone);
+              setPlayer((prev: any) => ({
+                ...prev,
+                level: 1, xp: 0, gold: 0, kills: 0,
+                dungeons_cleared: 0, raids_cleared: 0,
+                current_zone_number: 1,
+                ascension_count: data.ascension_count,
+                ascension_damage_mult: data.ascension_damage_mult,
+                current_zone_id: newZone.id,
+                current_location_id: newZone.locations?.[0]?.id ?? prev.current_location_id,
+                inventory: [], active_quests: [], completed_quest_ids: [],
+              }));
+              setTarget(null);
+              setDungeonRun(null);
+              const mult = data.ascension_damage_mult?.toFixed(2) ?? '1.15';
+              addLog(`━━━ ASCENSION ${data.ascension_count} COMPLETE ━━━`, "system");
+              addLog(`Your power persists. Damage multiplier: ×${mult} (permanent).`, "system");
+              addLog(`A new cycle begins. The world resets — but you do not.`, "system");
+              addLog(`━━━ ENTERING: ${newZone.name?.toUpperCase()} ━━━`, "system");
+              addLog(newZone.description, "system");
+            }
+          } catch (err: any) {
+            addLog(`Ascension Error: ${err.message}`, "error");
+          }
+        }
+
       } else if (lowerCmd === 'travel' || lowerCmd === 'next zone' || lowerCmd.startsWith('travel ')) {
         const isDungeon = lowerCmd.includes('dungeon');
         const isRaid    = lowerCmd.includes('raid');
@@ -2911,13 +2964,16 @@ export default function Home() {
           } else {
             const data = await res.json();
             const newZone = data.zone;
+            const newZoneNum = data.zone_number ?? 1;
             addLog("★ ZONE CLEARED! Advancing to the next challenge.", "system");
             setZone(newZone);
             setPlayer((prev: any) => ({
               ...prev,
               current_zone_id: newZone.id,
               current_location_id: newZone.locations?.[0]?.id ?? prev.current_location_id,
+              current_zone_number: newZoneNum,
             }));
+            addLog(`Zone ${newZoneNum} / 10${newZoneNum === 10 ? ' — ASCENSION WALL REACHED. Type "ascend" when ready.' : ''}`, "system");
             setChatSummary("");
             chatMsgCountRef.current = 0;
             setTarget(null);
@@ -3003,7 +3059,7 @@ export default function Home() {
               <div className="stat-item">
                 <div className="stat-header">
                   <span className="stat-label">HP</span>
-                  <span className="stat-value">{player?.hp || 100} / {player?.max_hp || 100}</span>
+                  <span className="stat-value">{fmt(player?.hp || 100)} / {fmt(player?.max_hp || 100)}</span>
                 </div>
                 <div className="progress-container">
                   <div className="progress-fill hp-fill" style={{ width: `${((player?.hp || 100) / (player?.max_hp || 100)) * 100}%` }}>
@@ -3015,11 +3071,11 @@ export default function Home() {
               <div className="stat-item">
                 <div className="stat-header">
                   <span className="stat-label">GOLD</span>
-                  <span className="stat-value text-yellow-400">⬡ {player?.gold || 0}</span>
+                  <span className="stat-value text-yellow-400">⬡ {fmt(player?.gold || 0)}</span>
                 </div>
                 <div className="stat-header mt-1">
                   <span className="stat-label">KILLS</span>
-                  <span className="stat-value">{player?.kills || 0}</span>
+                  <span className="stat-value">{fmt(player?.kills || 0)}</span>
                 </div>
                 <div className="stat-header mt-1">
                   <span className="stat-label">
@@ -3027,7 +3083,7 @@ export default function Home() {
                     <span className="text-[9px] opacity-40 ml-1">{gearScore < 100 ? `(${gearScore}/100 raid)` : '✓ RAID READY'}</span>
                   </span>
                   <span className={`stat-value text-[11px] ${gearScore >= 100 ? 'text-purple-400' : 'text-gray-400'}`}>
-                    {gearScore}
+                    {fmt(gearScore)}
                   </span>
                 </div>
                 {(player?.raids_cleared ?? 0) > 0 && (
@@ -3036,12 +3092,31 @@ export default function Home() {
                     <span className="stat-value text-purple-400 text-[11px]">★ {player.raids_cleared}</span>
                   </div>
                 )}
+                <div className="stat-header mt-1">
+                  <span className="stat-label text-[9px]">ZONE</span>
+                  <span className={`stat-value text-[11px] ${(player?.current_zone_number ?? 1) >= 10 ? 'text-orange-400 animate-pulse' : 'text-gray-300'}`}>
+                    {player?.current_zone_number ?? 1} / 10
+                    {(player?.current_zone_number ?? 1) >= 10 ? ' ⚑' : ''}
+                  </span>
+                </div>
+                {(player?.ascension_count ?? 0) > 0 && (
+                  <div className="stat-header mt-1">
+                    <span className="stat-label text-[9px]">ASCENSION</span>
+                    <span className="stat-value text-amber-400 text-[11px] font-bold">✦ {player.ascension_count}</span>
+                  </div>
+                )}
+                {(player?.ascension_count ?? 0) > 0 && (
+                  <div className="stat-header mt-1">
+                    <span className="stat-label text-[9px]">DMG MULT</span>
+                    <span className="stat-value text-amber-300 text-[11px]">×{(player?.ascension_damage_mult ?? 1).toFixed(2)}</span>
+                  </div>
+                )}
               </div>
 
               <div className="stat-item">
                 <div className="stat-header">
                   <span className="stat-label">XP{restedXp > 0 ? ' 💤 RESTED' : ''}</span>
-                  <span className="stat-value">{player?.xp || 0} / {player?.next_level_xp || 100}</span>
+                  <span className="stat-value">{fmt(player?.xp || 0)} / {fmt(player?.next_level_xp || 100)}</span>
                 </div>
                 <div className="progress-container" style={{ position: 'relative' }}>
                   {/* Rested XP pool shown as a faint teal overlay behind the XP fill */}
@@ -3705,9 +3780,27 @@ export default function Home() {
                   Who
                   <span className="keybind-hint">{currentIdx++}</span>
                 </button>
+                {!dungeonRun && (player?.current_zone_number ?? 1) >= 10 && (
+                  <button
+                    type="button"
+                    className="tool-button relative !text-amber-400 !border-amber-700/60 animate-pulse font-bold"
+                    onClick={() => executeCommand('ascend')}
+                    title="You have reached the Ascension Wall — Ascend to carry your power into the next cycle"
+                  >
+                    ✦ ASCEND
+                  </button>
+                )}
                 <button type="button" className="tool-button relative !text-accent/30" onClick={() => executeCommand('help')}>
                   Help
                   <span className="keybind-hint">?</span>
+                </button>
+                <button
+                  type="button"
+                  className="tool-button relative !text-accent/20 !border-accent/10 ml-auto"
+                  onClick={() => setShowHowToPlay(true)}
+                  title="How to Play / Log Out"
+                >
+                  ☽ Guide
                 </button>
               </>
             );
@@ -3740,6 +3833,102 @@ export default function Home() {
         </form>
       </div>
       {renderTooltip()}
+
+      {/* ── HOW TO PLAY / LOGOUT MODAL ─────────────────────────────────────── */}
+      {showHowToPlay && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+          onClick={() => setShowHowToPlay(false)}
+        >
+          <div
+            className="glass-panel max-w-2xl w-full mx-4 p-8 overflow-y-auto max-h-[90vh] text-[12px] leading-relaxed"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="panel-header header-nav mb-6 text-base">HOW TO PLAY</div>
+
+            <div className="space-y-5 text-accent/80">
+
+              <div>
+                <div className="text-accent font-bold uppercase tracking-widest text-[10px] mb-1">The Loop</div>
+                <div>Kill mobs → earn XP and gold → level up → unlock dungeons and raids → earn better gear → travel to harder zones → repeat. There is no end. The game is designed to be played for years.</div>
+              </div>
+
+              <div>
+                <div className="text-accent font-bold uppercase tracking-widest text-[10px] mb-1">Open World</div>
+                <div>Each zone has a hub (with NPCs), path locations (harvest plants, fish for materials), and POI locations (combat and quests). Talk to quest givers, accept quests, kill mobs to complete them, turn in at the hub for XP. Sell materials at the vendor for gold.</div>
+              </div>
+
+              <div>
+                <div className="text-accent font-bold uppercase tracking-widest text-[10px] mb-1">Dungeons (Level 10+)</div>
+                <div>Type <span className="text-accent">travel dungeon</span>. You enter with a party of 4 NPC companions (tank, healer, 2 DPS). Three rooms of enemies, culminating in a named boss. Watch for telegraphed attacks — click DODGE when they appear. Dungeon loot has 1.6× stat multipliers vs open-world drops.</div>
+              </div>
+
+              <div>
+                <div className="text-accent font-bold uppercase tracking-widest text-[10px] mb-1">Raids (Level 20+)</div>
+                <div>Type <span className="text-accent">travel raid</span>. Ten-player party, 7 rooms. The boss enters an Enrage phase at 30% HP — telegraphed ANNIHILATE hits become one-shots. Always dodge. Raid loot is the best gear in the game and what pushes your Gear Score toward the zone travel gate.</div>
+              </div>
+
+              <div>
+                <div className="text-accent font-bold uppercase tracking-widest text-[10px] mb-1">Zone Travel (GS 1000+)</div>
+                <div>Once your Gear Score reaches 1000, type <span className="text-accent">travel</span>. You move to a harder zone scaled to your current level. Each zone in the arc (1–10) is progressively harder — Zone 10 mobs have 2.8× base stats and are designed to be a wall.</div>
+              </div>
+
+              <div>
+                <div className="text-accent font-bold uppercase tracking-widest text-[10px] mb-1">Ascension — The Meta Loop</div>
+                <div>When you reach <span className="text-amber-400 font-bold">Zone 10</span>, type <span className="text-accent">ascend</span>. Your character resets to level 1 with no gear — but you permanently keep a <span className="text-amber-400">×1.15 damage multiplier</span> that stacks with every future ascension.</div>
+                <div className="mt-2 text-accent/50">
+                  Ascension 1: ×1.15 · Ascension 5: ×2.01 · Ascension 10: ×4.05 · Ascension 20: ×16.4 · Ascension 50: ×1,083
+                </div>
+                <div className="mt-2">Zone 10 takes 48 hours your first cycle. After 20 ascensions it takes 20 minutes. <span className="text-accent/60">That acceleration is the game.</span></div>
+              </div>
+
+              <div>
+                <div className="text-accent font-bold uppercase tracking-widest text-[10px] mb-1">Numbers Getting Big</div>
+                <div>HP, damage, XP, and gold are shown in K / M / B / T notation as they grow. After hundreds of ascensions, your damage multiplier will be in the billions. That is intended — the power fantasy is watching the same Zone 1 mobs evaporate instantly after years of progress.</div>
+              </div>
+
+              <div>
+                <div className="text-accent font-bold uppercase tracking-widest text-[10px] mb-1">Quick Commands</div>
+                <div className="font-mono text-[10px] text-accent/60 space-y-1 mt-2">
+                  <div>look · go [dir] · attack [mob] · talk to [npc]</div>
+                  <div>quests · accept [1/all] · turn in · inventory</div>
+                  <div>harvest · fish · gather · shop · sell · sell junk</div>
+                  <div>travel · travel dungeon · travel raid · ascend</div>
+                  <div>help · who · use healing · use elixir</div>
+                </div>
+              </div>
+
+            </div>
+
+            <div className="flex gap-3 mt-8">
+              <button
+                type="button"
+                className="tool-button flex-1"
+                onClick={() => setShowHowToPlay(false)}
+              >
+                Keep Playing
+              </button>
+              <button
+                type="button"
+                className="tool-button flex-1 !text-red-400/70 !border-red-900/40"
+                onClick={async () => {
+                  setShowHowToPlay(false);
+                  if (playerId) {
+                    try { await fetch(`http://localhost:8000/action/logout/${playerId}`, { method: 'POST' }); } catch {}
+                  }
+                  setPlayer(null);
+                  setPlayerId(null);
+                  setZone(null);
+                  setStep('intro');
+                  addLog("Logged out. Your progress is saved.", "system");
+                }}
+              >
+                Log Out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

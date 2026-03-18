@@ -364,6 +364,43 @@ The sim always dodges optimally at every tier — open world `kill_mob` tracks `
 
 **Combat theater UI:** Dungeon/raid content replaces the scrolling chat log with a persistent layout — boss HP bar at top, one row per party member that updates in place each round, 3-line rolling log for dramatic moments only. No scroll, no noise.
 
+### Ascension System
+`main.py → POST /ascend/{player_id} · POST /admin/force_ascend/{player_id}`
+
+Ascension is the meta-progression loop. The game is designed around 10-zone arcs — each zone harder than the last, with Zone 10 acting as a deliberate wall that is tuned to be very difficult without accumulated ascension buffs.
+
+**Zone difficulty scaling:**
+
+```
+difficulty_mult = 1.0 + (zone_number − 1) × 0.2
+Zone 1 = 1.0×  ·  Zone 5 = 1.8×  ·  Zone 10 = 2.8× mob HP and damage
+```
+
+**Ascension:**
+- Requires `current_zone_number == 10`
+- Resets: level, gear, gold, XP, quests, inventory, dungeon/raid progress, zone progress
+- Carries forward: `ascension_count + 1` and `ascension_damage_mult × 1.15`
+- Spawns a new starter zone at level 1
+
+**Damage multiplier compound:**
+
+| Ascension | Mult | Effect |
+|---|---|---|
+| 1 | ×1.15 | Zone 10 slightly more manageable |
+| 5 | ×2.01 | Zone 5+ clears measurably faster |
+| 10 | ×4.05 | Zone 10 wall no longer a wall |
+| 20 | ×16.4 | Full arc speed-run viable |
+| 50 | ×1,083 | Zone 10 takes minutes, not days |
+| 200 | ×3.3 billion | Zone 1 mobs evaporate instantly |
+
+The multiplier is applied in combat via a temporary copy of the player (`combat_player.damage = player.damage × ascension_damage_mult`). The base `player.damage` in the DB is never inflated — the mult is stateless and reapplied fresh every hit.
+
+**Numbers:** HP, gold, XP, and damage values use K/M/B/T notation in the frontend at large magnitudes, then scientific notation beyond 10^15. The game is designed for infinite play — notation handles arbitrarily large numbers gracefully.
+
+**Testing:** `python scripts/sim_run.py --skip-to-ascend` tests the full ascension endpoint in isolation. `--ascensions N` uses `/admin/force_ascend` to verify the ×1.15^N compound math at any stack count.
+
+---
+
 ### Loot System
 `main.py → _roll_loot(mob_level, loot_table, char_class, zone_tier)`
 
@@ -763,13 +800,14 @@ Exits 0 on all checks passing, 1 on any failure. Run it after any backend change
 
 Because the sim calls the exact same backend endpoints as the browser, it **is** the real game — the backend doesn't know whether the caller is Next.js or a Python script. Combat math, XP gains, loot rolls, quest tracking, dungeon party AI, and level-up logic are all identical. The only thing the sim skips is frontend rendering.
 
-**Three-phase meta loop:**
+**Four-phase meta loop:**
 
 | Phase | Goal | Stops when |
 |---|---|---|
 | Open world | Kill quests, harvest/fish, forage, level up | Level 10 reached |
 | Dungeon loop | Dungeon runs back-to-back (no open world sweeps) | GS ≥ 100 AND level 20 |
 | Raid loop | Run raids, attempt zone travel after each clear | Zone travel succeeds (GS ≥ 1000) |
+| Ascension | Reach Zone 10, call `/ascend`, verify reset + mult | Ascension count confirmed, new zone loaded |
 
 **Use the sim for:**
 - Verifying backend changes without touching the browser
@@ -801,6 +839,13 @@ python ..\scripts\sim_run.py --skip-to-dungeon
 # Skip Phases 1+2 — boost to lv20 ~280 GS, jump straight to raid loop
 # Saves ~60-90 min — use this to test raids and zone travel directly
 python ..\scripts\sim_run.py --skip-to-raid
+
+# Skip to Zone 10 and test the /ascend endpoint — verifies reset + damage mult
+python ..\scripts\sim_run.py --skip-to-ascend
+
+# Apply N ascension stacks via /admin/force_ascend — verify damage mult math
+# Useful for checking that ×1.15^N is applied correctly at high counts
+python ..\scripts\sim_run.py --ascensions 10
 
 # Keep the character after the run for manual inspection in-browser
 python ..\scripts\sim_run.py --no-cleanup

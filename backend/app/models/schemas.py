@@ -107,6 +107,9 @@ class Player(CharacterBase):
     active_dungeon_run_id: Optional[str] = None
     dungeons_cleared: int = 0
     raids_cleared: int = 0
+    ascension_count: int = 0         # lifetime ascensions — the big number
+    ascension_damage_mult: float = 1.0  # compounds ×1.15 per ascension
+    current_zone_number: int = 1     # 1–10 within each ascension arc
 
 class DungeonMember(BaseModel):
     id: str
