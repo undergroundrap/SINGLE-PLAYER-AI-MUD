@@ -349,10 +349,10 @@ check("dungeon entry blocked at level 1 (non-200)", r and r.status_code != 200,
       f"got {r.status_code if r else 'no response'}")
 
 
-# ── 15. Zone travel gate (no quests → blocked) ───────────────────────────────
+# ── 15. Zone travel gate (low GS → blocked) ──────────────────────────────────
 print("\n[15] Zone travel gate")
 r = req("post", f"/zone/travel/{player_id}")
-check("zone travel blocked without quests (non-200)", r and r.status_code != 200,
+check("zone travel blocked at low GS (non-200)", r and r.status_code != 200,
       f"got {r.status_code if r else 'no response'}")
 
 

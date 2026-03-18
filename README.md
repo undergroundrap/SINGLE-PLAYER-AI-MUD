@@ -120,6 +120,13 @@ FastAPI  ─── main.py  (all endpoints, combat logic, loot rolling, quest ma
 SINGLE-PLAYER-AI-MUD/
 ├── README.md
 │
+├── scripts/
+│   ├── sim_run.py        ← Headless full-progression sim. Drives every endpoint the
+│   │                       browser does. Use to validate balance and catch regressions.
+│   ├── smoke_test.py     ← Fast (~60s) happy-path integration test. Covers all 17
+│   │                       systems in order; creates and deletes a throwaway character.
+│   └── reset_data.py     ← Deletes backend/data/mud.db entirely. Use after schema changes.
+│
 ├── frontend/
 │   ├── app/
 │   │   ├── page.tsx              ← ENTIRE frontend. One large file — all state, UI, commands
@@ -136,7 +143,8 @@ SINGLE-PLAYER-AI-MUD/
         ├── models/
         │   └── schemas.py        ← Pydantic data models. Single source of truth for all
         │                           game objects: Player, Zone, Location, Mob, NPC, Quest,
-        │                           Item, SimulatedPlayer. Edit here when adding new fields.
+        │                           Item, DungeonRun, DungeonMember. Edit here when adding
+        │                           new fields.
         │
         └── core/
             ├── ai_client.py      ← LM Studio HTTP wrapper. generate_content(), stream_content(),
@@ -145,6 +153,13 @@ SINGLE-PLAYER-AI-MUD/
             ├── combat_engine.py  ← CombatEngine class. Hit rolls, damage rolls, defense
             │                       calculation. RuneScape-style accuracy formula.
             │                       resolve_tick(attacker, target) → (messages, is_dead)
+            │
+            ├── dungeon_engine.py ← Dungeon & raid lifecycle. generate_run() builds a
+            │                       DungeonRun (party + 3–7 rooms). resolve_round() steps
+            │                       one combat round: player attacks, each NPC acts by role
+            │                       (tank/healer/dps), mobs retaliate, room-clear check.
+            │                       Calls combat_engine.resolve_tick() internally — no
+            │                       duplicated combat math.
             │
             ├── scaling_math.py   ← Pure math. get_max_hp(level), get_damage(level),
             │                       get_xp_required(level). Tune numbers here.
