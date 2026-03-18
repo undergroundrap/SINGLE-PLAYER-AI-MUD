@@ -92,6 +92,20 @@ class SimulationEngine:
                         target_id = random.choice(list(curr_loc.exits.values()))
                         sim_p.current_location_id = target_id
 
+                elif action == "battling" and zone.locations:
+                    # Find an alive mob at sim player's location and kill it
+                    sim_loc = next((l for l in zone.locations if l.id == sim_p.current_location_id), None)
+                    if sim_loc:
+                        alive_mobs = [m for m in sim_loc.mobs if m.respawn_at is None and m.hp > 0]
+                        if alive_mobs:
+                            target = random.choice(alive_mobs)
+                            target.hp = 0
+                            target.respawn_at = now + 60.0
+                            zone.world_messages.append(
+                                f"{sim_p.name} defeats {target.name} near {sim_loc.name}."
+                            )
+                            zone.world_messages = zone.world_messages[-5:]
+
         if updated:
             await vec_db.save_zone(zone_id, zone.model_dump(mode='json'))
 

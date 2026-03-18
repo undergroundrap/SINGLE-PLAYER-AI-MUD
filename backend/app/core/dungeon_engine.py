@@ -12,7 +12,7 @@ import random
 import uuid
 import time
 from app.models.schemas import DungeonMember, DungeonRoom, DungeonRun, Mob, Player
-from app.core.scaling_math import ScalingMath, CLASS_STATS
+from app.core.scaling_math import ScalingMath, CLASS_STATS, apply_levelups
 from app.core.combat_engine import CombatEngine
 from app.core.world_generator import _make_mobs, _roll_loot
 
@@ -381,17 +381,7 @@ def resolve_round(run: DungeonRun, player: Player) -> dict:
             round_log.append(f"  ☠ XP penalty: -{xp_penalty} XP")
 
     # Level-up loop
-    leveled_up = False
-    hp_mult, dmg_mult = CLASS_STATS.get(player.char_class, (1.0, 1.0))
-    while player.xp >= player.next_level_xp:
-        player.xp -= player.next_level_xp
-        player.level += 1
-        player.next_level_xp = ScalingMath.get_xp_required(player.level)
-        leveled_up = True
-        player.max_hp = int(ScalingMath.get_max_hp(player.level) * hp_mult)
-        player.hp = player.max_hp
-        player.damage = int(ScalingMath.get_damage(player.level) * dmg_mult)
-        round_log.append(f"  ⬆ LEVEL UP! Now level {player.level}!")
+    leveled_up = apply_levelups(player, round_log)
 
     # ── 9a. Keep rolling combat log (last 5 meaningful lines) ────────────────
     run.combat_log = (run.combat_log + round_log)[-5:]

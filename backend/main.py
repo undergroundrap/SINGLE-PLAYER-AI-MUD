@@ -3,7 +3,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.models.schemas import Player, Zone, Mob, Item, Location, Quest, DungeonRun
 from app.core.world_generator import world_gen, _roll_loot
-from app.core.scaling_math import ScalingMath, RARITY, CLASS_STATS
+from app.core.scaling_math import ScalingMath, RARITY, CLASS_STATS, apply_levelups
 from app.core.vector_db import vec_db
 from app.core.combat_engine import combat_engine
 from app.core.simulation import sim_engine
@@ -103,20 +103,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-def _apply_levelups(player: Player, messages: list) -> bool:
-    """Loop level-ups until XP is below threshold. Returns True if leveled."""
-    leveled = False
-    hp_mult, dmg_mult = CLASS_STATS.get(player.char_class, (1.0, 1.0))
-    while player.xp >= player.next_level_xp:
-        player.xp -= player.next_level_xp
-        player.level += 1
-        player.next_level_xp = ScalingMath.get_xp_required(player.level)
-        player.max_hp = int(ScalingMath.get_max_hp(player.level) * hp_mult)
-        player.hp = player.max_hp
-        player.damage = int(ScalingMath.get_damage(player.level) * dmg_mult)
-        leveled = True
-        messages.append(f"⬆ LEVEL UP! You are now level {player.level}!")
-    return leveled
 
 
 # ──────────────────────────────────────────────
@@ -323,7 +309,7 @@ async def complete_quest(player_id: str, quest_id: str):
                 item_placement = "dropped"
                 messages.append(f"⚠ Bags full — [{item_reward.name}] left on the ground! Sell junk first.")
 
-    leveled = _apply_levelups(player, messages)
+    leveled = apply_levelups(player, messages)
 
     player.active_quests = [q for q in player.active_quests if q.id != quest_id]
     player.completed_quest_ids.append(quest_id)
@@ -541,7 +527,7 @@ async def attack(player_id: str, mob_name: str):
         player.xp    += xp_gained
         player.kills += 1
 
-        leveled_up = _apply_levelups(player, messages)
+        leveled_up = apply_levelups(player, messages)
 
         # Gold drop (1–5 per level, elites 3×)
         gold_gained = random.randint(1, max(1, target_mob.level)) * (3 if target_mob.is_elite or target_mob.is_named else 1)
