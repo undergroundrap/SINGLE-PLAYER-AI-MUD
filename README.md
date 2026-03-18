@@ -24,6 +24,8 @@ An infinite, AI-powered text-based MMORPG. Explore a procedurally generated open
 
 The game follows a classic MMO loop — **open world zones → dungeons (level 10+) → raids (level 20+)** — repeated infinitely with no level cap. Each zone is either drawn from a curated starter template (levels 1–5) or procedurally generated using an AI narrative layer on top of deterministic math scaffolding.
 
+Each zone's topology is **hub → path → POI** for every spoke. Path locations are safe rest stops between the hub and each point of interest — no combat mobs spawn on paths, and patrol encounters never fire there. Every path location has a harvestable plant and a fishing hole, giving players a low-pressure gold source between fights.
+
 Players are single-player but exist in a world populated by simulated entities (SimulatedPlayers) that move, rest, and respond to the environment — each with a generated fantasy name (Theron, Sylvara, Corvus, etc.) and a stable personality archetype. World chat responses come from these zone-specific players, grounded in the actual location, mobs, and weather the player is experiencing right now.
 
 Every class has a unique **auto-firing passive proc** that triggers mid-combat without any input — Rogues evade, Warlocks drain life, Paladins self-heal. Combat is intentionally hands-off so players can focus on questing, chatting, and exploring while loot and levels accumulate. Dungeon and raid portals are always visible in the sidebar from level 1 so players always know what they're working toward.
@@ -84,7 +86,7 @@ FastAPI  ─── main.py  (all endpoints, combat logic, loot rolling, quest ma
 - All authoritative game state lives in **SQLite + cache** on the backend
 - The frontend maintains a **local mirror** of `player` and `zone` state for instant UI updates
 - After every mutating action the frontend syncs from the response (XP, HP, gold, kills)
-- The zone ticker (`/zone/{zone_id}` polled every 5s) keeps the local zone mirror fresh
+- The zone ticker (`/zone/{zone_id}` polled every 10s) keeps the local zone mirror fresh
 
 ---
 
@@ -162,6 +164,7 @@ Two-phase approach:
 - **Phase 2 (AI):** Calls LM Studio for names, descriptions, NPC dialogue, quest flavor text. Falls back to a hardcoded gritty-fantasy dictionary if AI is unavailable
 - Each hub gets **2 quest giver NPCs** (quests split between them) + a vendor NPC
 - Mobs spawn with a 20% elite chance and 5% named chance per slot (`_make_mobs`)
+- **Path topology:** Between every hub and POI a path location is inserted — `hub → path_0 → poi_0`, `hub → path_1 → poi_1`, etc. Paths are wired bidirectionally. Path locations have no mobs, no NPCs, and a `resources` field: `[plant_name, fish_species]` drawn from level-appropriate tables (e.g. `["Ironweed", "Silverscale"]`). Patrol spawns skip path locations entirely.
 - **Dungeons:** the final POI is always a boss chamber (`force_boss=True`) — guaranteed named boss + elite guards, location labeled `[BOSS]`
 - **Starter zones (level ≤5):** 5 distinct hand-crafted templates (Whispering Glade, Moonshaded Glade, Saltcliff Reach, The Ashen Fields, Barrowmoor) — picked randomly so players rarely see the same start twice
 
@@ -340,7 +343,27 @@ Runs as an `asyncio.create_task` started at FastAPI startup (`@app.on_event("sta
 - Has a 10% chance to call AI for an ambient zone atmosphere message — **only for zones with a real player currently present** (idle cached zones are skipped to avoid wasteful AI calls)
 
 ### Patrol Encounters
-Every 45 seconds the frontend fires `POST /action/patrol_check/{player_id}` when the player is idle in a non-hub location with no live mobs. The backend has a 25% chance to spawn a wandering mob from the zone's existing mob pool (thematically consistent — no generic enemy types). The mob is added to the live location and the client shows `⚠ A [mob] crosses your path!`. The encounter is then treated identically to a normal mob fight.
+Every 45 seconds the frontend fires `POST /action/patrol_check/{player_id}` when the player is idle in a non-hub location with no live mobs. The backend has a 25% chance to spawn a wandering mob from the zone's existing mob pool (thematically consistent — no generic enemy types). The mob is added to the live location and the client shows `⚠ A [mob] crosses your path!`, then immediately starts auto-attacking — the player cannot ignore a patrol encounter.
+
+Patrol spawns are skipped when:
+- The current location is the hub (has NPCs)
+- There are already live mobs at the location
+- The location is a **path location** (`loc.resources` is non-empty) — paths are safe zones
+
+### Harvesting & Fishing
+Path locations between the hub and each POI have two passive gold sources available at all times — no quest required.
+
+| Action | Commands | Cooldown | Item | Sell value |
+|---|---|---|---|---|
+| Harvest | `harvest` / `pick` / `herb` | 8 s | Named plant (`slot="material"`) | ~4 × level gold |
+| Fish | `fish` / `angle` / `cast` | 12 s | Named fish (`slot="material"`) | ~4 × level gold |
+
+- Backend checks `loc.resources[0]` (plant) / `loc.resources[1]` (fish) — no harvest on empty locations
+- Blocked while any mobs are alive at the location (endpoint returns an error)
+- Per-action cooldowns tracked server-side in `_harvest_times` / `_fish_times` dicts (separate from attack cooldown)
+- Material items use `slot="material"` — not equippable, included in **Sell Junk**, sellable at any vendor
+- The action bar shows **🌿 [PlantName]** and **🎣 [FishName]** buttons only on path locations, showing the actual resource name from the zone
+- A gold-border pulse animates the terminal frame during both harvest and fishing (same style as forage gather)
 
 ### AI Client
 `app/core/ai_client.py → LMStudioClient`
@@ -444,6 +467,8 @@ N+1…   → Attack buttons (one per unique alive mob type at current location)
 …       → Talk (one per quest-giver NPC at location)
 …       → Shop / Sell (when vendor is present; Sell only if inventory non-empty)
 …       → Gather (only when an active forage quest targets the current location)
+…       → 🌿 Harvest (only on path locations — shows actual plant name)
+…       → 🎣 Fish (only on path locations — shows actual fish species)
 …       → Quests, Bags, Who
 ?       → Help (always last, always ?)
 ```
@@ -459,17 +484,20 @@ N+1…   → Attack buttons (one per unique alive mob type at current location)
 - At a hub with a quest giver and vendor: Talk might be `4`, Shop `5`, Quests `6`
 - In a combat area with two mob types: `attack Boar` = `3`, `attack Spider` = `4`, Quests shifts to `5`
 - When a forage quest is active at your location: Gather appears before Quests, shifting everything after it
-- While gathering is in progress: the Gather button is disabled — pressing its number does nothing
+- While gathering / harvesting / fishing is in progress: the relevant button is disabled — pressing its number does nothing
 - Typing a number into the command box mid-sentence is safe — hotkeys only fire when the input is blank
 
-The hotbar action map is maintained in a `hotbarActionsRef` (a `useRef<Map<number, () => void>>`) that is rebuilt via `useEffect` whenever zone, player, combat target, or gathering state changes. This keeps the keydown handler stateless and free from stale closure bugs.
+The hotbar action map is maintained in a `hotbarActionsRef` (a `useRef<Map<number, () => void>>`) that is rebuilt via `useEffect` whenever zone, player, combat target, or gathering/harvesting/fishing state changes. This keeps the keydown handler stateless and free from stale closure bugs.
 
 **Visual feedback:**
 - The terminal border pulses **red** while in combat (`autoAttackTarget` is set)
-- The terminal border pulses **gold** while gathering (`isGathering` is true)
+- The terminal border pulses **gold** while gathering, harvesting, or fishing
 - Attack buttons show a draining red cooldown overlay during auto-attack
 - Gather button shows a draining green overlay during the 8s gather cooldown
-- The target frame (top-right, same position as the enemy HP bar) shows a yellow gather progress bar with a live countdown timer when foraging
+- The target frame (top-right) shows a colour-coded progress bar with a live countdown timer during resource actions:
+  - Forage gather → yellow bar, 8s
+  - Harvest → green bar, 8s, shows plant name
+  - Fish → blue bar, 12s, shows fish species
 
 ### Minimap
 
@@ -514,10 +542,10 @@ Turn-in happens at any hub quest giver NPC via `POST /quests/complete/{player_id
 |---|---|---|
 | `Player` | `level`, `hp/max_hp`, `xp/next_level_xp`, `gold`, `kills`, `deaths`, `inventory: List[Item]`, `equipment: Dict[str, Item]`, `active_quests`, `current_zone_id`, `current_location_id`, `visited_zone_ids`, `rested_xp`, `last_logout_time`, `dungeons_cleared`, `raids_cleared` | Equipment slots: `head chest hands legs feet main_hand off_hand`. `raids_cleared` drives open-world zone tier escalation (+3 levels per raid). `active_dungeon_run_id` tracks an in-progress run. |
 | `Zone` | `id`, `name`, `locations: List[Location]`, `quests`, `simulated_players`, `time_of_day` (0–1), `weather`, `is_dungeon`, `is_raid` | Zone is the top-level open-world unit. Instanced dungeons use `DungeonRun`, not `Zone`. |
-| `Location` | `id`, `name`, `description`, `npcs: List[NPC]`, `mobs: List[Mob]`, `exits: Dict[str, str]` | Exits map direction → location_id |
+| `Location` | `id`, `name`, `description`, `npcs: List[NPC]`, `mobs: List[Mob]`, `exits: Dict[str, str]`, `resources: List[str]` | Exits map direction → location_id. `resources` is `[plant_name, fish_species]` for path locations, `[]` everywhere else. |
 | `Mob` | `id`, `name`, `level`, `hp/max_hp`, `damage`, `loot_table`, `respawn_at` (Unix ts or None), `is_elite`, `is_named` | `respawn_at = None` means alive. Reset to `max_hp` and `respawn_at = None` when timer fires. |
 | `NPC` | `id`, `name`, `role` (`quest_giver/vendor/trainer`), `dialogue`, `quests_offered`, `vendor_items` | Vendors have `vendor_items: List[Dict]` with `price` key |
-| `Item` | `id`, `name`, `description`, `level`, `rarity`, `stats: Dict[str, int]`, `slot` | Equipment stats: `armor` or `damage`. Consumables use `slot = "consumable"` with effect encoded in stats: `{"heal_pct": 40}` or `{"xp_bonus_pct": 75, "xp_charges": 5}` |
+| `Item` | `id`, `name`, `description`, `level`, `rarity`, `stats: Dict[str, int]`, `slot` | Equipment stats: `armor` or `damage`. Consumables use `slot = "consumable"` with effect encoded in stats: `{"heal_pct": 40}` or `{"xp_bonus_pct": 75, "xp_charges": 5}`. Harvest/fish drops use `slot = "material"` with `stats: {"value": 5}` — not equippable, included in Sell Junk. |
 | `Quest` | `id`, `title`, `objective`, `quest_type` (`kill/gather/hunt/explore/forage`), `target_id`, `collect_name` (gather/forage quests), `target_count`, `current_progress`, `xp_reward`, `is_completed` | `forage` quests use `target_id` as a location ID (same as `explore`); progress via `/action/gather` not mob kills. |
 | `SimulatedPlayer` | `id`, `name`, `race`, `char_class`, `current_location_id`, `status` | Background actors — not real players. `current_location_id` resolves to a location name in the `/who` output. |
 | `DungeonRun` | `id`, `player_id`, `dungeon_name`, `dungeon_level`, `is_raid`, `room_index`, `rooms: List[DungeonRoom]`, `party: List[DungeonMember]`, `combat_log`, `status` (`active/cleared/wiped`), `boss_enraged` | Stored in-memory only (`_dungeon_runs` dict). Lost on server restart. |
@@ -556,7 +584,9 @@ All endpoints are in `backend/main.py`. Backend runs on `http://localhost:8000`.
 | `POST` | `/action/use/{player_id}` | Use a consumable from inventory. Param: `item_id`. Enforces per-type cooldowns (`heal` 60 s, `xp` 5 min). Returns `player_hp`, `active_xp_buff`, `heal_cd`, `xp_cd`. |
 | `POST` | `/action/rest/{player_id}` | Persist out-of-combat HP regen. Param: `hp` (clamped to `[1, max_hp]` server-side). Called by frontend timer every ~10 s while regenerating. |
 | `POST` | `/action/gather/{player_id}` | Progress active forage quests targeting current location. 8 s cooldown. Returns `messages`, `quest_updates`. |
-| `POST` | `/action/patrol_check/{player_id}` | 25% chance to spawn a wandering zone-mob in current location (non-hub, no live mobs only). Returns `{ patrol, mob_name, mob_level }`. |
+| `POST` | `/action/harvest/{player_id}` | Harvest a plant from a path location (`loc.resources[0]`). 8 s cooldown. Blocked if alive mobs present. Returns `item`, `messages`. |
+| `POST` | `/action/fish/{player_id}` | Fish at a path location fishing hole (`loc.resources[1]`). 12 s cooldown. Blocked if alive mobs present. Returns `item`, `messages`. |
+| `POST` | `/action/patrol_check/{player_id}` | 25% chance to spawn a wandering zone-mob in current location (non-hub, no live mobs, non-path only). Returns `{ patrol, mob_name, mob_level }`. |
 | `POST` | `/action/login/{player_id}` | Compute and credit rested XP accumulated since last logout. Called on character load. Returns `rested_xp`, `rested_xp_cap`. |
 | `POST` | `/action/logout/{player_id}` | Stamp logout time for rested XP calculation. Called via `sendBeacon` on `beforeunload`. |
 
@@ -759,6 +789,10 @@ Restarting the server resets all attack cooldowns. This is fine for a single-pla
 ## Future Potential Updates
 
 Ideas that fit the design philosophy (frictionless, solo-friendly, endlessly progressive) but are large enough to be their own milestone.
+
+### Cooking System
+
+Raw fish (from fishing holes) and harvested plants (from path locations) would become ingredients for cooked food. A `cook [item]` command at any campfire/hub would convert them into consumables: *Cooked Silverscale* grants a 30-minute out-of-combat HP regen buff (+4% per second instead of +2%). Cooked food would not stack with Healing Potions but would free up potion charges for combat use. This creates a natural gold/resource trade-off — sell materials directly, or spend 10s cooking for a quality-of-life regen buff.
 
 ### AI Party Dialogue & Loot Reactions
 
