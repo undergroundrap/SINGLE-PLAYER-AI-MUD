@@ -2778,7 +2778,7 @@ export default function Home() {
           {dungeonRun
             ? renderDungeonTheater()
             : (
-              <div className={`glass-panel terminal-wrapper flex-1${autoAttackTarget ? ' combat-pulse' : ''}`}>
+              <div className={`glass-panel terminal-wrapper flex-1${autoAttackTarget ? ' combat-pulse' : isGathering ? ' gather-pulse' : ''}`}>
                 <div className="terminal-output" ref={scrollRef}>
                   {logs.map((log, i) => (
                     <div key={i} className={`terminal-line log-${log.type}`}>

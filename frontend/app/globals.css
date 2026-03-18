@@ -482,6 +482,15 @@ body.combat-flash {
   animation: combat-border-pulse 1.8s ease-in-out infinite;
 }
 
+@keyframes gather-border-pulse {
+  0%, 100% { border-color: #1a1a1c; }
+  50%       { border-color: #a07800; }
+}
+
+.gather-pulse {
+  animation: gather-border-pulse 1.8s ease-in-out infinite;
+}
+
 .terminal-output {
   flex: 1;
   overflow-y: auto !important;
