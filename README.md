@@ -497,9 +497,9 @@ The top-of-screen ticker scrolls 6 information slots continuously. The last two 
 | Stage | Progress slot | Next Step slot |
 |---|---|---|
 | Level 1–9 | `GS: 12 — LEVEL 4 / 10 NEEDED FOR DUNGEONS` | `GRIND QUESTS → REACH LEVEL 10 → ENTER DUNGEONS` |
-| Level 10–19 | `GS: 85 / 125 REQUIRED — LEVEL 14 / 20 NEEDED FOR RAIDS` | `RUN DUNGEONS → BUILD GEAR SCORE → UNLOCK RAIDS AT LEVEL 20` |
-| Level 20+, GS below threshold | `GS: 110 / 125 REQUIRED TO ADVANCE` | `FARM RAIDS FOR EPIC GEAR → HIT 125 GS → TYPE 'TRAVEL'` |
-| GS threshold met | `✓ GS: 130 / 125 — ZONE COMPLETE` | `ZONE CLEARED — TYPE 'TRAVEL' TO ADVANCE` |
+| Level 10–19 | `GS: 85 — LEVEL 14 / 20 NEEDED FOR RAIDS` | `RUN DUNGEONS → BUILD GEAR SCORE → UNLOCK RAIDS AT LEVEL 20` |
+| Level 20+, GS below threshold | `GS: 650 / 1000 REQUIRED TO ADVANCE` | `FARM RAIDS FOR EPIC GEAR → HIT 1000 GS → TYPE 'TRAVEL'` |
+| GS threshold met | `✓ GS: 1009 / 1000 — ZONE COMPLETE` | `ZONE CLEARED — TYPE 'TRAVEL' TO ADVANCE` |
 
 This means a brand-new player always knows what to do next without reading a guide. The ticker is the tutorial.
 
