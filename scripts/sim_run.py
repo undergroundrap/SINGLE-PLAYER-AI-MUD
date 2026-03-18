@@ -63,10 +63,17 @@ DIM = "\033[2m"
 RST = "\033[0m"
 
 errors: list[str] = []
+_sim_start = time.time()
+_section_start = time.time()
+
+
+def _ts() -> str:
+    """Wall-clock elapsed since sim start, e.g. [  42.3s]"""
+    return f"{DIM}[{time.time() - _sim_start:6.1f}s]{RST}"
 
 
 def log(msg: str, color: str = W) -> None:
-    print(f"  {color}{msg}{RST}")
+    print(f"  {_ts()} {color}{msg}{RST}")
 
 
 def warn(msg: str) -> None:
@@ -75,7 +82,12 @@ def warn(msg: str) -> None:
 
 
 def section(title: str) -> None:
+    global _section_start
+    elapsed = time.time() - _section_start
+    _section_start = time.time()
     print(f"\n{Y}{'─' * 64}{RST}")
+    if elapsed > 0.5:   # skip on the very first section (no meaningful elapsed yet)
+        print(f"{DIM}  (previous section took {elapsed:.1f}s){RST}")
     print(f"{Y}  {title}{RST}")
     print(f"{Y}{'─' * 64}{RST}")
 
@@ -693,7 +705,9 @@ else:
 
 
 # ── Summary ───────────────────────────────────────────────────────────────────
+total = time.time() - _sim_start
 print(f"\n{M}{'═' * 64}{RST}")
+print(f"{M}  Total time: {total:.1f}s ({total/60:.1f} min){RST}")
 if errors:
     print(f"{R}  {len(errors)} issue(s) during simulation:{RST}")
     for e in errors:
