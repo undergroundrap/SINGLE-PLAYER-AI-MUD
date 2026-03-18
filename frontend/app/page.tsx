@@ -86,8 +86,9 @@ export default function Home() {
   const [restedXp, setRestedXp] = useState<number>(0);
   const [restedXpCap, setRestedXpCap] = useState<number>(0);
   // Gather (forage quests)
-  const [gatherCooldown, setGatherCooldown] = useState<number>(0); // 0–100 %
+  const [gatherCooldown, setGatherCooldown] = useState<number>(0); // 0–100 % — used only for text label
   const [isGathering, setIsGathering] = useState<boolean>(false);
+  const gatherBarRef = useRef<HTMLDivElement>(null); // driven directly by rAF for smooth animation
   // Dungeon
   const [dungeonRun, setDungeonRun] = useState<any>(null);
   const [dungeonAttacking, setDungeonAttacking] = useState<boolean>(false);
@@ -580,8 +581,13 @@ export default function Home() {
               <span>Gathering Resources</span>
               <span>{secsRemaining}s</span>
             </div>
-            <div className="progress-container h-2" style={{ borderColor: '#7a5c00' }}>
-              <div className="progress-fill gather-fill" style={{ width: `${gatherCooldown}%` }} />
+            <div style={{ height: '10px', background: '#000', border: '1px solid #7a5c00', borderRadius: '2px', overflow: 'hidden' }}>
+              <div ref={gatherBarRef} style={{
+                width: '0%',
+                height: '100%',
+                background: 'linear-gradient(to right, #a07800, #ffe033)',
+                boxShadow: '0 0 12px rgba(255,200,0,0.5)',
+              }} />
             </div>
           </div>
         </div>
@@ -2283,7 +2289,9 @@ export default function Home() {
                 const tick = () => {
                   const elapsed = Date.now() - start;
                   const pct = Math.min(100, (elapsed / GATHER_CD) * 100);
-                  setGatherCooldown(pct);
+                  // Drive bar directly via DOM to avoid React transition lag
+                  if (gatherBarRef.current) gatherBarRef.current.style.width = `${pct}%`;
+                  setGatherCooldown(pct); // updates the text label only
                   if (pct < 100) requestAnimationFrame(tick);
                   else { setGatherCooldown(0); resolve(); }
                 };
