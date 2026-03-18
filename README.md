@@ -664,19 +664,70 @@ python scripts/reset_data.py
 
 ### Smoke Test
 
-`scripts/smoke_test.py` runs a full happy-path integration test against a live backend — creates a character, moves, attacks, accepts a quest, talks to an NPC, checks the vendor, and cleans up after itself. Run it against a running server:
+`scripts/smoke_test.py` runs a fast happy-path integration test (under 60 seconds) against a live backend. It covers every major system in order, creates a throwaway character, and deletes it when done.
+
+**What it checks (17 sections):**
+character creation → zone topology (hub/path/POI structure) → movement → harvest & fish (cooldowns + material slot) → combat (attack, cooldown 429, kill, XP) → patrol check → login/logout rested XP → player list/load → NPC talk → quest accept → vendor → sell junk → dungeon gate (blocked at level 1) → zone travel gate (blocked without quests) → describe endpoints
 
 ```powershell
 cd backend
 .\venv\Scripts\activate
-# In a separate terminal: uvicorn main:app --reload --port 8000
+# Backend must already be running in another terminal
 python ..\scripts\smoke_test.py
 # or against a different port:
 python ..\scripts\smoke_test.py --base http://localhost:8001
 ```
 
-Exits 0 on all checks passing, 1 on any failure. Useful to run after backend changes to catch regressions before they reach the frontend.
-Stop the backend first — SQLite may have a write lock open while the server is running. The script shows the path and size before asking for confirmation.
+Exits 0 on all checks passing, 1 on any failure. Run it after any backend change — if something regresses, the failing section name tells you exactly where to look.
+
+---
+
+### Headless Simulation (`sim_run.py`)
+
+`scripts/sim_run.py` plays the full game loop automatically — no browser, no clicking. It creates a character, grinds through open-world combat, exercises paths/harvest/fish/quests, enters and completes a dungeon, then cleans up. Useful for verifying end-to-end behavior after large changes, or if you want to watch the loop play out and check that numbers feel right.
+
+**What it exercises:**
+- Zone generation (AI calls fire naturally — mob/location descriptions, ambiance)
+- Hub → path navigation, harvest + fish, sell junk
+- Combat grind loop with quest accept/turn-in cycling
+- Auto-equip, loot drops, level-ups
+- Dungeon entry gate, 3-room dungeon run with AI party, loot collection
+- Zone travel gate check (shows the GS block message if threshold not met)
+
+```powershell
+cd backend
+.\venv\Scripts\activate
+# Backend must already be running in another terminal
+
+# Default: grind to level 12, run dungeon, clean up
+python ..\scripts\sim_run.py
+
+# Grind deeper (e.g. to attempt zone travel)
+python ..\scripts\sim_run.py --target-level 15
+
+# Keep the character after the run for manual inspection in-browser
+python ..\scripts\sim_run.py --no-cleanup
+
+# Custom name + different port
+python ..\scripts\sim_run.py --name BotWarrior --base http://localhost:8001
+```
+
+The sim prints a colourized live feed — you can watch level-ups, loot drops, dungeon room clears, and party actions in real time. A default run (target level 12) takes roughly 3–5 minutes depending on mob HP and cooldowns.
+
+**Reading the output — things to watch for:**
+
+| Signal | What it means |
+|---|---|
+| `✗ FATAL` / red lines | Hard error — endpoint returned unexpected status, request failed entirely |
+| `Party wiped!` in red | Dungeon wipe — party may be undertuned for the zone level, or damage scaling is off |
+| Level-ups happening very fast or very slow | XP curve may have drifted — check `ScalingMath.get_xp_required` |
+| `Sold 0 junk items` after harvest+fish | Material items not landing in inventory, or `slot=material` check in sell_junk broken |
+| `Dungeon entry blocked` unexpectedly | Level gate check in `/dungeon/enter` may be too strict or the player level didn't persist |
+| `Loot: []` on dungeon clear | Loot roll isn't firing on run cleared — check `_roll_loot` in `dungeon_engine.py` |
+| No path locations found | Zone topology broke — path insertion in `world_generator.py` didn't run for this zone type |
+| Grind loop hits "too many respawn waits" | Respawn timer too long, or mobs aren't re-generating after wipe |
+
+If something looks off, paste the full terminal output and it's easy to spot where the loop went wrong.
 
 ### What gets deleted per operation
 | Operation | Deletes |
