@@ -1494,13 +1494,14 @@ On first launch (detected by absence of `mud.db`), show an onboarding screen bef
 
 **GNU Affero General Public License v3.0 (AGPL-3.0)**
 
-Copyright © 2025 Ocean Bennett. All rights reserved.
+Copyright © 2026 Ocean Bennett. All rights reserved.
 
 This project is open source under the AGPL v3. You are free to use, study, modify, and distribute this software under the following conditions:
 
-- **Attribution** — You must retain the original copyright notice and a visible credit to this repository in any derivative work, fork, or project that uses this engine or its architecture.
+- **Visible attribution** — Any game, app, or service built on this engine must credit "Ocean Bennett" by name with a link to this repository — in credits, README, or store page. Keeping the copyright notice in source alone is not sufficient.
 - **Copyleft** — Any derivative work must be released under the same AGPL v3 license. You cannot make a closed-source game using this engine.
-- **Network use** — If you run a modified version of this software as a hosted service (e.g., a web game), you must make the complete source code of your version publicly available. This closes the SaaS loophole present in GPL.
+- **Network use** — If you run a modified version as a hosted service (e.g., a web game), you must make the complete source publicly available. This closes the SaaS loophole present in GPL.
+- **Commercial reservation** — Ocean Bennett, as copyright holder, may release commercial versions under separate terms. This does not affect open-source rights granted to the community.
 
 The **dual-exponential prestige loop** described in [The Infinite Loop](#the-infinite-loop--foundational-mechanic) section is the original design of this project. If you derive a game system from that architecture, attribution to this repository is required under the terms above.
 

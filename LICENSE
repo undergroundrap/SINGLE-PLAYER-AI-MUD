@@ -1,20 +1,50 @@
-AGPL-3.0 License
+AGPL-3.0 License with Visible Attribution Requirement
 
-Copyright (c) 2025 Ocean Bennett
+Copyright (c) 2026 Ocean Bennett
 
 SINGLE PLAYER AI MUD — including its dual-exponential prestige loop architecture,
 combat engine, world generator, ascension system, and all source code in this
-repository — is licensed under the GNU Affero General Public License v3.0.
+repository — is licensed under the GNU Affero General Public License v3.0,
+with the additional visible attribution requirement below.
 
-You may use, study, modify, and distribute this software under the following terms:
+────────────────────────────────────────────────────────────────────────────────
+ADDITIONAL TERM (permitted under AGPL-3.0 Section 7):
+────────────────────────────────────────────────────────────────────────────────
 
-1. Attribution: Retain this copyright notice and credit this repository in any
-   derivative work, fork, or project that uses this engine or its architecture.
+Any product, game, application, or service that uses, derives from, or is
+substantially built upon this engine or its architecture must include a visible
+credit in one or more of the following locations:
+
+  - The product's in-game credits screen or about page
+  - The product's public-facing README or documentation
+  - The product's store page, landing page, or website
+
+The credit must read, at minimum:
+
+  "Engine architecture based on work by Ocean Bennett
+   (https://github.com/oceanbbennett/SINGLE-PLAYER-AI-MUD)"
+
+  or an equivalent that names Ocean Bennett and links to this repository.
+
+This requirement applies regardless of how substantially the code was modified.
+────────────────────────────────────────────────────────────────────────────────
+
+Core license terms:
+
+1. Attribution: Retain this copyright notice and the visible credit above in
+   any derivative work, fork, or project that uses this engine or its
+   architecture.
 
 2. Copyleft: Derivative works must be released under AGPL-3.0. You may not
    incorporate this code into a closed-source project.
 
 3. Network use: If you run a modified version as a hosted or networked service,
-   you must make the complete modified source code publicly available.
+   you must make the complete modified source code publicly available. This
+   applies even if you never distribute a binary — running a web game counts.
 
-Full license text: https://www.gnu.org/licenses/agpl-3.0.en.html
+4. Commercial use by the original author: Ocean Bennett, as copyright holder,
+   reserves the right to release commercial versions of this software under
+   separate licensing terms. This does not affect the open-source rights
+   granted to the community under this license.
+
+Full AGPL-3.0 license text: https://www.gnu.org/licenses/agpl-3.0.en.html
