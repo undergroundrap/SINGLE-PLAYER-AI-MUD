@@ -3071,7 +3071,7 @@ export default function Home() {
                 {step === 'game' && (
                   <button
                     type="button"
-                    className="text-[9px] text-red-400/40 uppercase tracking-widest hover:text-red-400/80 transition-colors mt-1 block"
+                    className="tool-button !text-red-400/60 !border-red-900/30 !py-0.5 !px-2 !text-[9px] mt-1"
                     onClick={async () => {
                       if (playerId) { try { await fetch(`http://localhost:8000/action/logout/${playerId}`, { method: 'POST' }); } catch {} }
                       setPlayer(null); setPlayerId(null); setZone(null); setDungeonRun(null);
@@ -3079,7 +3079,7 @@ export default function Home() {
                       addLog("Logged out. Your progress is saved.", "system");
                     }}
                   >
-                    ⏻ Log Out
+                    ⏻ LOG OUT
                   </button>
                 )}
               </div>
@@ -4012,7 +4012,7 @@ export default function Home() {
           >
             <div className="panel-header header-nav mb-6 text-base">HOW TO PLAY</div>
 
-            <div className="space-y-5 text-gray-300">
+            <div className="space-y-5" style={{ color: '#e2e8f0' }}>
 
               <div>
                 <div className="text-accent font-bold uppercase tracking-widest text-[10px] mb-1">The Loop</div>
@@ -4042,10 +4042,10 @@ export default function Home() {
               <div>
                 <div className="text-accent font-bold uppercase tracking-widest text-[10px] mb-1">Ascension — The Meta Loop</div>
                 <div>When you reach <span className="text-amber-400 font-bold">Zone 10</span>, type <span className="text-accent">ascend</span>. Your character resets to level 1 with no gear — but you permanently keep a <span className="text-amber-400">×1.15 damage multiplier</span> that stacks with every future ascension.</div>
-                <div className="mt-2 text-accent/50">
+                <div className="mt-2" style={{ color: '#94a3b8' }}>
                   Ascension 1: ×1.15 · Ascension 5: ×2.01 · Ascension 10: ×4.05 · Ascension 20: ×16.4 · Ascension 50: ×1,083
                 </div>
-                <div className="mt-2">Zone 10 takes 48 hours your first cycle. After 20 ascensions it takes 20 minutes. <span className="text-accent/60">That acceleration is the game.</span></div>
+                <div className="mt-2">Zone 10 takes 48 hours your first cycle. After 20 ascensions it takes 20 minutes. <span style={{ color: '#94a3b8' }}>That acceleration is the game.</span></div>
               </div>
 
               <div>
@@ -4055,7 +4055,7 @@ export default function Home() {
 
               <div>
                 <div className="text-accent font-bold uppercase tracking-widest text-[10px] mb-1">Quick Commands</div>
-                <div className="font-mono text-[10px] text-accent/60 space-y-1 mt-2">
+                <div className="font-mono text-[10px] space-y-1 mt-2" style={{ color: '#94a3b8' }}>
                   <div>look · go [dir] · attack [mob] · talk to [npc]</div>
                   <div>quests · accept [1/all] · turn in · inventory</div>
                   <div>harvest · fish · gather · shop · sell · sell junk</div>
