@@ -1164,111 +1164,106 @@ export default function Home() {
       pct > 60 ? 'bg-green-600' : pct > 30 ? 'bg-yellow-500' : 'bg-red-600';
 
     return (
-      <div className="flex-1 flex flex-col p-3 gap-2 font-mono text-xs">
-        {/* Header */}
-        <div className="flex justify-between items-center border-b border-white/10 pb-2">
-          <span className={`font-bold tracking-wider uppercase ${run.is_raid ? 'text-amber-400' : 'text-purple-300'}`}>
+      <div className="flex-1 flex flex-col min-h-0">
+
+        {/* Header — same height as statusline */}
+        <div className="flex-shrink-0 flex justify-between items-center px-6 py-3 border-b border-white/10 bg-black/40">
+          <span className={`font-mono font-bold tracking-widest text-sm uppercase ${run.is_raid ? 'text-amber-400' : 'text-purple-300'}`}>
             {run.is_raid ? '★' : '⚔'} {run.dungeon_name}
           </span>
-          <span className="text-gray-500 text-[10px] tracking-widest">
+          <span className="font-mono text-gray-500 text-xs tracking-widest">
             ROOM {run.room_index + 1} / {run.rooms?.length ?? 3}
           </span>
         </div>
 
-        {/* Boss / primary mob HP */}
+        {/* Boss HP — prominent */}
         {primaryMob && !roomCleared && (
-          <div className="bg-black/40 border border-white/5 rounded p-2">
-            <div className="flex justify-between mb-1">
-              <span className={`font-bold tracking-wide ${primaryMob.is_named ? 'text-purple-300' : primaryMob.is_elite ? 'text-orange-400' : 'text-red-400'}`}>
-                {primaryMob.is_named ? '⚑ ' : primaryMob.is_elite ? '★ ' : ''}
-                {primaryMob.name}
-                {aliveMobs.length > 1 && <span className="text-gray-600 ml-2 font-normal">+{aliveMobs.length - 1} more</span>}
+          <div className="flex-shrink-0 px-6 py-3 border-b border-white/10 bg-black/30">
+            <div className="flex justify-between items-center mb-2">
+              <span className={`font-mono font-bold text-base ${primaryMob.is_named ? 'text-purple-200' : primaryMob.is_elite ? 'text-orange-300' : 'text-red-300'}`}>
+                {primaryMob.is_named ? '⚑ ' : primaryMob.is_elite ? '★ ' : ''}{primaryMob.name}
+                {aliveMobs.length > 1 && <span className="text-gray-600 font-normal text-sm ml-2">+{aliveMobs.length - 1} more</span>}
               </span>
-              <span className="text-gray-500 text-[10px]">{primaryMob.hp} / {primaryMob.max_hp} HP</span>
+              <span className="font-mono text-gray-400 text-sm">{primaryMob.hp} / {primaryMob.max_hp} HP</span>
             </div>
-            <div className="w-full rounded bg-black/60" style={{ height: '8px' }}>
+            <div className="w-full rounded-sm bg-gray-900" style={{ height: '10px' }}>
               <div
-                className={`${hpColor(hpPct(primaryMob.hp, primaryMob.max_hp))} h-full rounded transition-all duration-300`}
-                style={{ width: `${hpPct(primaryMob.hp, primaryMob.max_hp)}%` }}
+                className={`${hpColor(hpPct(primaryMob.hp, primaryMob.max_hp))} rounded-sm transition-all duration-500`}
+                style={{ width: `${hpPct(primaryMob.hp, primaryMob.max_hp)}%`, height: '10px' }}
               />
             </div>
           </div>
         )}
 
+        {/* Enrage / Room Cleared banners */}
         {run.boss_enraged && !roomCleared && (
-          <div className="text-center text-red-300 font-bold py-1 border border-red-700/60 bg-red-950/40 rounded animate-pulse tracking-widest text-[10px]">
+          <div className="flex-shrink-0 text-center text-red-300 font-mono font-bold py-2 border-b border-red-700/60 bg-red-950/40 animate-pulse tracking-widest text-xs">
             ⚡ ENRAGED — BOSS DAMAGE +40% ⚡
           </div>
         )}
-
         {roomCleared && (
-          <div className={`text-center font-bold py-2 border rounded tracking-widest ${
-            run.status === 'cleared' && run.is_raid
-              ? 'text-amber-300 border-amber-700/50 bg-amber-950/30'
-              : run.status === 'cleared'
-              ? 'text-yellow-300 border-yellow-700/50 bg-yellow-950/30'
-              : 'text-green-400 border-green-800/50 bg-green-950/20'
+          <div className={`flex-shrink-0 text-center font-mono font-bold py-2 border-b tracking-widest text-sm ${
+            run.status === 'cleared' && run.is_raid ? 'text-amber-300 border-amber-700/50 bg-amber-950/30'
+            : run.status === 'cleared' ? 'text-yellow-300 border-yellow-700/50 bg-yellow-950/30'
+            : 'text-green-400 border-green-800/50 bg-green-950/20'
           }`}>
-            {run.status === 'cleared' && run.is_raid
-              ? '★ RAID CLEARED — NEW TIER UNLOCKED ★'
-              : run.status === 'cleared'
-              ? '★ DUNGEON CLEARED!'
+            {run.status === 'cleared' && run.is_raid ? '★ RAID CLEARED — NEW TIER UNLOCKED ★'
+              : run.status === 'cleared' ? '★ DUNGEON CLEARED!'
               : '✓ ROOM CLEARED — ADVANCE WHEN READY'}
           </div>
         )}
 
-        {/* Party rows */}
-        <div className="flex flex-col gap-1 flex-1">
-          <div className="text-gray-600 text-[10px] tracking-widest mb-1">── PARTY ──────────────────────────</div>
+        {/* Party — fixed height section */}
+        <div className="flex-shrink-0 border-b border-white/10 px-6 py-3 bg-black/20">
+          <div className="text-gray-600 text-xs tracking-widest font-mono mb-3">── PARTY ──────────────────────────────────────────</div>
 
           {/* Player row */}
-          <div className="flex items-center gap-2 bg-black/30 border border-white/5 rounded px-2 py-1">
-            <span className="text-[10px] text-gray-600">⚔</span>
-            <span className="w-16 text-accent font-bold truncate">{player?.name || 'YOU'}</span>
-            <span className="w-12 text-gray-500 text-[10px] truncate">{player?.char_class}</span>
-            <div className="flex-1 rounded bg-black/50" style={{ height: '6px' }}>
-              <div
-                className={`${hpColor(hpPct(player?.hp ?? 1, player?.max_hp ?? 1))} h-full rounded transition-all duration-300`}
-                style={{ width: `${hpPct(player?.hp ?? 1, player?.max_hp ?? 1)}%` }}
-              />
+          <div className="flex items-center gap-3 mb-2">
+            <span className="font-mono font-bold text-accent w-24 truncate">⚔ {player?.name || 'YOU'}</span>
+            <span className="font-mono text-gray-500 text-sm w-20 truncate">{player?.char_class}</span>
+            <div className="flex-1 rounded-sm bg-gray-900" style={{ height: '7px' }}>
+              <div className={`${hpColor(hpPct(player?.hp ?? 1, player?.max_hp ?? 1))} rounded-sm transition-all duration-300`}
+                style={{ width: `${hpPct(player?.hp ?? 1, player?.max_hp ?? 1)}%`, height: '7px' }} />
             </div>
-            <span className="w-20 text-right text-gray-500 text-[10px]">{player?.hp}/{player?.max_hp}</span>
+            <span className="font-mono text-gray-400 text-sm w-28 text-right">{player?.hp} / {player?.max_hp}</span>
           </div>
 
-          {/* AI party member rows */}
+          {/* AI party members */}
           {(run.party || []).map((m: any) => {
             const pct = hpPct(m.hp, m.max_hp);
             const roleIcon = m.role === 'healer' ? '✦' : m.role === 'tank' ? '🛡' : '⚔';
             const roleColor = m.role === 'healer' ? 'text-green-400' : m.role === 'tank' ? 'text-blue-400' : 'text-red-400';
             return (
-              <div key={m.id} className={`flex items-center gap-2 bg-black/30 border border-white/5 rounded px-2 py-1 ${!m.is_alive ? 'opacity-25' : ''}`}>
-                <span className={`text-[10px] ${roleColor}`}>{roleIcon}</span>
-                <span className="w-16 text-gray-200 font-bold truncate">{m.name}</span>
-                <span className={`w-12 truncate text-[10px] ${roleColor}`}>{m.char_class}</span>
-                <div className="flex-1 rounded bg-black/50" style={{ height: '6px' }}>
+              <div key={m.id} className={`flex items-center gap-3 mb-2 ${!m.is_alive ? 'opacity-25' : ''}`}>
+                <span className={`font-mono font-bold w-24 truncate ${m.is_alive ? 'text-gray-200' : 'text-gray-600'}`}>
+                  <span className={roleColor}>{roleIcon}</span> {m.name}
+                </span>
+                <span className={`font-mono text-sm w-20 truncate ${roleColor}`}>{m.char_class}</span>
+                <div className="flex-1 rounded-sm bg-gray-900" style={{ height: '7px' }}>
                   {m.is_alive
-                    ? <div className={`${hpColor(pct)} h-full rounded transition-all duration-300`} style={{ width: `${pct}%` }} />
-                    : <div className="bg-gray-900 h-full w-full rounded" />
+                    ? <div className={`${hpColor(pct)} rounded-sm transition-all duration-300`} style={{ width: `${pct}%`, height: '7px' }} />
+                    : <div className="bg-gray-900 rounded-sm" style={{ height: '7px' }} />
                   }
                 </div>
-                <span className="w-28 text-right text-gray-600 text-[10px] truncate italic">
-                  {m.is_alive ? m.last_action : '💀 fallen'}
+                <span className="font-mono text-gray-500 text-xs w-28 text-right truncate italic">
+                  {m.is_alive ? (m.last_action || '—') : '💀 fallen'}
                 </span>
               </div>
             );
           })}
         </div>
 
-        {/* Rolling combat log */}
-        <div className="border-t border-white/10 pt-2">
-          <div className="text-gray-600 text-[10px] tracking-widest mb-1">── COMBAT LOG ──────────────────────</div>
-          {(run.combat_log || []).slice(-3).map((line: string, i: number, arr: string[]) => (
-            <div key={i} className={`text-[11px] leading-5 ${i === arr.length - 1 ? 'text-white' : 'text-gray-500'}`}>
+        {/* Combat log — uses terminal-output class to match open world exactly */}
+        <div className="terminal-output">
+          {(run.combat_log || []).map((line: string, i: number, arr: string[]) => (
+            <div key={i} className="terminal-line" style={{ color: i === arr.length - 1 ? '#ffffff' : '#6b7280' }}>
               {i === arr.length - 1 ? '▶ ' : '  '}{line}
             </div>
           ))}
           {(run.combat_log || []).length === 0 && (
-            <div className="text-gray-500 text-[10px] italic">Entering {room?.name}...</div>
+            <div className="terminal-line" style={{ color: '#4b5563', fontStyle: 'italic' }}>
+              Entering {room?.name}...
+            </div>
           )}
         </div>
       </div>
