@@ -111,6 +111,7 @@ export default function Home() {
   // Dungeon
   const [dungeonRun, setDungeonRun] = useState<any>(null);
   const [dungeonAttacking, setDungeonAttacking] = useState<boolean>(false);
+  const [dungeonAttackCd, setDungeonAttackCd] = useState<number>(0); // 0–100% drain bar
   const [telegraphActive, setTelegraphActive] = useState<boolean>(false);
   const [dodgeTimeLeft, setDodgeTimeLeft] = useState<number>(0); // ms remaining (dungeon)
   const dodgeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -312,6 +313,95 @@ export default function Home() {
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [owTelegraph]);
+
+  // ── Dungeon attack — component-level so key handler + theater can share it ──
+  const fireDungeonAttack = async (dodged: boolean) => {
+    if (!playerId || !dungeonRun || dungeonAttacking) return;
+    if (dodgeTimerRef.current) { clearTimeout(dodgeTimerRef.current); dodgeTimerRef.current = null; }
+    if (dodgeIntervalRef.current) { clearInterval(dodgeIntervalRef.current); dodgeIntervalRef.current = null; }
+    setTelegraphActive(false);
+    setDodgeTimeLeft(0);
+    setDungeonAttacking(true);
+    setDungeonAttackCd(100);
+    try {
+      const res = await fetch(`http://localhost:8000/dungeon/attack/${dungeonRun.id}?player_id=${playerId}&dodged=${dodged}`, { method: 'POST' });
+      if (!res.ok) { const e = await res.json(); addLog(e.detail || 'Dungeon error', 'error'); return; }
+      const data = await res.json();
+      setDungeonRun(data.run);
+      setPlayer((prev: any) => prev ? {
+        ...prev,
+        hp:               data.player_hp,
+        max_hp:           data.player_max_hp,
+        xp:               data.player_xp,
+        gold:             data.player_gold,
+        level:            data.player_level,
+        damage:           data.player_damage        ?? prev.damage,
+        next_level_xp:    data.player_next_level_xp ?? prev.next_level_xp,
+        raids_cleared:    data.player_raids_cleared    ?? prev.raids_cleared,
+        dungeons_cleared: data.player_dungeons_cleared ?? prev.dungeons_cleared,
+        inventory:        data.player_inventory ?? prev.inventory,
+      } : prev);
+      if (data.loot?.length) {
+        data.loot.forEach((item: any) => {
+          if (item._dropped) addLog(`⚠ Bags full — [${item.name}] left on the ground!`, 'error');
+          else addLog(`🎒 ${item.name} (${item.rarity}) dropped!`, 'system');
+        });
+      }
+      if (data.leveled_up) { addLog(`⬆ LEVEL UP! Now level ${data.player_level}!`, 'system'); setLevelUpFlash(true); }
+      if (data.wiped) {
+        addLog('☠ Your party was wiped. Retreating...', 'error');
+        await fetch(`http://localhost:8000/dungeon/flee/${dungeonRun.id}?player_id=${playerId}`, { method: 'POST' }).catch(() => {});
+        setDungeonRun(null);
+      }
+    } catch (e: any) { addLog(`Dungeon Error: ${e.message}`, 'error'); }
+    finally { setDungeonAttacking(false); setDungeonAttackCd(0); }
+  };
+
+  // ── Dungeon cooldown drain bar ───────────────────────────────────────────
+  useEffect(() => {
+    if (!dungeonAttacking) { setDungeonAttackCd(0); return; }
+    setDungeonAttackCd(100);
+    const start = Date.now();
+    const DUNGEON_EST_MS = 2000;
+    const tick = setInterval(() => {
+      const pct = Math.max(0, 100 - ((Date.now() - start) / DUNGEON_EST_MS) * 100);
+      setDungeonAttackCd(pct);
+      if (pct === 0) clearInterval(tick);
+    }, 50);
+    return () => clearInterval(tick);
+  }, [dungeonAttacking]);
+
+  // ── Dungeon number-key shortcuts ─────────────────────────────────────────
+  useEffect(() => {
+    if (!dungeonRun) return;
+    const handle = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (document.activeElement === inputRef.current) return;
+      const run = dungeonRun;
+      const room = run.rooms?.[run.room_index];
+      const aliveMobs = (room?.mobs || []).filter((m: any) => m.hp > 0);
+      const roomCleared = room?.cleared || aliveMobs.length === 0;
+      const isLastRoom = run.room_index >= (run.rooms?.length ?? 1) - 1;
+      if (e.key === '1') {
+        e.preventDefault();
+        if (run.status === 'active' && !roomCleared) fireDungeonAttack(!!run.pending_telegraph);
+      }
+      if (e.key === '2') {
+        e.preventDefault();
+        if (run.status === 'active' && roomCleared && !isLastRoom) {
+          fetch(`http://localhost:8000/dungeon/advance/${run.id}?player_id=${playerId}`, { method: 'POST' })
+            .then(r => r.json()).then(d => { setDungeonRun(d); addLog(`→ Entering ${d.rooms?.[d.room_index]?.name}...`, 'system'); });
+        }
+      }
+      if (e.key === '3' || (e.key === '2' && (run.status === 'cleared' || (roomCleared && isLastRoom)))) {
+        e.preventDefault();
+        fetch(`http://localhost:8000/dungeon/flee/${run.id}?player_id=${playerId}`, { method: 'POST' })
+          .then(() => { setDungeonRun(null); addLog('You leave the dungeon.', 'system'); });
+      }
+    };
+    window.addEventListener('keydown', handle);
+    return () => window.removeEventListener('keydown', handle);
+  }, [dungeonRun, dungeonAttacking, playerId]);
 
   // ── Auto-attack loop ────────────────────────────────────────────────────
   // Fires another attack tick automatically after the cooldown expires,
@@ -1140,49 +1230,6 @@ export default function Home() {
         {/* Action buttons */}
         <div className="flex gap-2 pt-1 border-t border-white/10">
           {run.status === 'active' && !roomCleared && (() => {
-            // Shared attack fire function
-            const fireDungeonAttack = async (dodged: boolean) => {
-              if (!playerId || dungeonAttacking) return;
-              // Cancel any pending dodge timer when player acts manually
-              if (dodgeTimerRef.current) { clearTimeout(dodgeTimerRef.current); dodgeTimerRef.current = null; }
-              if (dodgeIntervalRef.current) { clearInterval(dodgeIntervalRef.current); dodgeIntervalRef.current = null; }
-              setTelegraphActive(false);
-              setDodgeTimeLeft(0);
-              setDungeonAttacking(true);
-              try {
-                const res = await fetch(`http://localhost:8000/dungeon/attack/${run.id}?player_id=${playerId}&dodged=${dodged}`, { method: 'POST' });
-                if (!res.ok) { const e = await res.json(); addLog(e.detail || 'Dungeon error', 'error'); return; }
-                const data = await res.json();
-                setDungeonRun(data.run);
-                setPlayer((prev: any) => prev ? {
-                  ...prev,
-                  hp:            data.player_hp,
-                  max_hp:        data.player_max_hp,
-                  xp:            data.player_xp,
-                  gold:          data.player_gold,
-                  level:         data.player_level,
-                  damage:        data.player_damage        ?? prev.damage,
-                  next_level_xp: data.player_next_level_xp ?? prev.next_level_xp,
-                  raids_cleared:    data.player_raids_cleared    ?? prev.raids_cleared,
-                  dungeons_cleared: data.player_dungeons_cleared ?? prev.dungeons_cleared,
-                  inventory:     data.player_inventory ?? prev.inventory,
-                } : prev);
-                if (data.loot?.length) {
-                  data.loot.forEach((item: any) => {
-                    if (item._dropped) addLog(`⚠ Bags full — [${item.name}] left on the ground!`, 'error');
-                    else addLog(`🎒 ${item.name} (${item.rarity}) dropped!`, 'system');
-                  });
-                }
-                if (data.leveled_up) { addLog(`⬆ LEVEL UP! Now level ${data.player_level}!`, 'system'); setLevelUpFlash(true); }
-                if (data.wiped) {
-                  addLog('☠ Your party was wiped. Retreating...', 'error');
-                  await fetch(`http://localhost:8000/dungeon/flee/${run.id}?player_id=${playerId}`, { method: 'POST' }).catch(() => {});
-                  setDungeonRun(null);
-                }
-              } catch (e: any) { addLog(`Dungeon Error: ${e.message}`, 'error'); }
-              finally { setDungeonAttacking(false); }
-            };
-
             const tel = run.pending_telegraph;
             const dodgePct = tel ? Math.max(0, (dodgeTimeLeft / (tel.window_ms ?? 3000)) * 100) : 0;
 
@@ -1197,23 +1244,26 @@ export default function Home() {
                 disabled={dungeonAttacking}
                 onClick={() => fireDungeonAttack(true)}
               >
-                {/* Drain bar showing remaining dodge window */}
                 <div
                   className={`absolute left-0 top-0 h-full transition-none ${tel.is_oneshot ? 'bg-red-600/40' : 'bg-yellow-600/30'}`}
                   style={{ width: `${dodgePct}%` }}
                 />
                 <span className="relative z-10">
-                  {dungeonAttacking ? '...' : tel.is_oneshot ? `☽ DODGE — ${tel.name}!` : `☽ DODGE (${tel.name})`}
+                  {dungeonAttacking ? '...' : tel.is_oneshot ? `☽ DODGE — ${tel.name}! [1]` : `☽ DODGE (${tel.name}) [1]`}
                 </span>
               </button>
             ) : (
               // ── Normal ATTACK button ──
               <button
-                className={`tool-button flex-1 !text-red-400 !border-red-900/50 ${dungeonAttacking ? 'opacity-60' : ''}`}
+                className={`tool-button flex-1 relative overflow-hidden !text-red-400 ${dungeonAttacking ? 'opacity-60' : 'mob-active-pulse'}`}
                 disabled={dungeonAttacking}
                 onClick={() => fireDungeonAttack(false)}
               >
-                {dungeonAttacking ? '...' : '⚔ ATTACK'}
+                <div
+                  className="absolute inset-0 bg-red-900/30 origin-left transition-none"
+                  style={{ transform: `scaleX(${dungeonAttackCd / 100})` }}
+                />
+                <span className="relative z-10">{dungeonAttacking ? '...' : '⚔ ATTACK [1]'}</span>
               </button>
             );
           })()}
@@ -1226,7 +1276,7 @@ export default function Home() {
                 if (res.ok) { const d = await res.json(); setDungeonRun(d); addLog(`→ Entering ${d.rooms?.[d.room_index]?.name}...`, 'system'); }
               }}
             >
-              ADVANCE →
+              ADVANCE → [2]
             </button>
           )}
 
@@ -1239,7 +1289,7 @@ export default function Home() {
                 addLog('You leave the dungeon, victorious.', 'system');
               }}
             >
-              ★ RETURN TO WORLD
+              ★ RETURN TO WORLD [2]
             </button>
           )}
 
@@ -1249,10 +1299,11 @@ export default function Home() {
               onClick={async () => {
                 await fetch(`http://localhost:8000/dungeon/flee/${run.id}?player_id=${playerId}`, { method: 'POST' });
                 setDungeonRun(null);
+
                 addLog('You flee the dungeon.', 'system');
               }}
             >
-              FLEE
+              FLEE [3]
             </button>
           )}
         </div>
@@ -3150,7 +3201,7 @@ export default function Home() {
             ? renderDungeonTheater()
             : (
               <div
-                className={`glass-panel terminal-wrapper flex-1${levelUpFlash ? ' levelup-flash' : autoAttackTarget ? ' combat-pulse' : isHarvesting ? ' harvest-pulse' : isFishing ? ' fish-pulse' : isGathering ? ' gather-pulse' : ''}`}
+                className={`glass-panel terminal-wrapper flex-1${levelUpFlash ? ' levelup-flash' : (autoAttackTarget || (dungeonRun && dungeonRun.status === 'active' && !dungeonRun.rooms?.[dungeonRun.room_index]?.cleared)) ? ' combat-pulse' : isHarvesting ? ' harvest-pulse' : isFishing ? ' fish-pulse' : isGathering ? ' gather-pulse' : ''}`}
                 onAnimationEnd={() => setLevelUpFlash(false)}
               >
                 <div className="terminal-output" ref={scrollRef}>
