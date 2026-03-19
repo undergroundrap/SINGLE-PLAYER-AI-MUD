@@ -233,10 +233,11 @@ async def stream_narrative(player_id: str, action: str):
     loc = next((l for l in zone.locations if l.id == player.current_location_id), None)
 
     prompt = (
-        f"Player {player.name} ({player.race} {player.char_class}) just performed: {action}. "
-        f"Describe the immediate outcome in 1-2 sentences. "
+        f"Player {player.name} ({player.race} {player.char_class}) just performed: '{action}'. "
         f"Location: {loc.name if loc else 'Unknown'}. "
-        "Include a 'HINT:' at the end suggesting a gameplay command."
+        f"Write 1-2 sentences of pure atmospheric narrative describing what happens. "
+        f"Do NOT suggest commands, invent game mechanics, reference stats, or include hints. "
+        f"This is flavour text only — stay grounded in the world, not the game system."
     )
 
     from app.core.ai_client import ai_client
