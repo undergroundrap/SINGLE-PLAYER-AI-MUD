@@ -112,6 +112,7 @@ export default function Home() {
   const [dungeonRun, setDungeonRun] = useState<any>(null);
   const [dungeonAttacking, setDungeonAttacking] = useState<boolean>(false);
   const [dungeonAttackCd, setDungeonAttackCd] = useState<number>(0); // 0–100% drain bar
+  const [dungeonAutoAttack, setDungeonAutoAttack] = useState<boolean>(false);
   const [telegraphActive, setTelegraphActive] = useState<boolean>(false);
   const [dodgeTimeLeft, setDodgeTimeLeft] = useState<number>(0); // ms remaining (dungeon)
   const dodgeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -371,6 +372,28 @@ export default function Home() {
     return () => clearInterval(tick);
   }, [dungeonAttacking]);
 
+  // ── Dungeon auto-attack loop ─────────────────────────────────────────────
+  // Mirrors open-world auto-attack: fires next round after a short pause,
+  // pauses when a telegraph is pending, stops when room clears or run ends.
+  useEffect(() => {
+    if (!dungeonAutoAttack || !dungeonRun || dungeonAttacking) return;
+    const run = dungeonRun;
+    if (run.status !== 'active') return;
+    const room = run.rooms?.[run.room_index];
+    const aliveMobs = (room?.mobs || []).filter((m: any) => m.hp > 0);
+    const roomCleared = room?.cleared || aliveMobs.length === 0;
+    if (roomCleared) return;           // wait for player to advance
+    if (run.pending_telegraph) return; // wait for player to dodge
+    const t = setTimeout(() => fireDungeonAttack(false), 600);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dungeonAutoAttack, dungeonRun, dungeonAttacking]);
+
+  // Stop auto-attack when dungeon ends
+  useEffect(() => {
+    if (!dungeonRun) setDungeonAutoAttack(false);
+  }, [dungeonRun]);
+
   // ── Dungeon number-key shortcuts ─────────────────────────────────────────
   useEffect(() => {
     if (!dungeonRun) return;
@@ -384,7 +407,16 @@ export default function Home() {
       const isLastRoom = run.room_index >= (run.rooms?.length ?? 1) - 1;
       if (e.key === '1') {
         e.preventDefault();
-        if (run.status === 'active' && !roomCleared) fireDungeonAttack(!!run.pending_telegraph);
+        if (run.status === 'active' && !roomCleared) {
+          if (run.pending_telegraph) {
+            fireDungeonAttack(true);
+          } else if (dungeonAutoAttack) {
+            setDungeonAutoAttack(false);
+          } else {
+            setDungeonAutoAttack(true);
+            fireDungeonAttack(false);
+          }
+        }
       }
       if (e.key === '2') {
         e.preventDefault();
@@ -1253,17 +1285,26 @@ export default function Home() {
                 </span>
               </button>
             ) : (
-              // ── Normal ATTACK button ──
+              // ── Normal ATTACK button — click once to start auto, again to stop ──
               <button
                 className={`tool-button flex-1 relative overflow-hidden !text-red-400 ${dungeonAttacking ? 'opacity-60' : 'mob-active-pulse'}`}
                 disabled={dungeonAttacking}
-                onClick={() => fireDungeonAttack(false)}
+                onClick={() => {
+                  if (dungeonAutoAttack) {
+                    setDungeonAutoAttack(false);
+                  } else {
+                    setDungeonAutoAttack(true);
+                    fireDungeonAttack(false);
+                  }
+                }}
               >
                 <div
                   className="absolute inset-0 bg-red-900/30 origin-left transition-none"
                   style={{ transform: `scaleX(${dungeonAttackCd / 100})` }}
                 />
-                <span className="relative z-10">{dungeonAttacking ? '...' : '⚔ ATTACK [1]'}</span>
+                <span className="relative z-10">
+                  {dungeonAttacking ? '...' : dungeonAutoAttack ? '⚔ AUTO ■ [1]' : '⚔ ATTACK [1]'}
+                </span>
               </button>
             );
           })()}
