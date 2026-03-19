@@ -1165,47 +1165,53 @@ export default function Home() {
       pct > 60 ? 'bg-green-600' : pct > 30 ? 'bg-yellow-500' : 'bg-red-600';
 
     return (
-      <div className="glass-panel flex-1 flex flex-col p-3 gap-2 font-mono text-xs">
+      <div className="flex-1 flex flex-col p-3 gap-2 font-mono text-xs">
         {/* Header */}
         <div className="flex justify-between items-center border-b border-white/10 pb-2">
-          <span className="text-purple-300 font-bold tracking-wider">
-            ⚔ {run.dungeon_name?.toUpperCase()}
+          <span className={`font-bold tracking-wider uppercase ${run.is_raid ? 'text-amber-400' : 'text-purple-300'}`}>
+            {run.is_raid ? '★' : '⚔'} {run.dungeon_name}
           </span>
-          <span className="text-gray-500">
-            Room {run.room_index + 1} / {run.rooms?.length ?? 3}
+          <span className="text-gray-500 text-[10px] tracking-widest">
+            ROOM {run.room_index + 1} / {run.rooms?.length ?? 3}
           </span>
         </div>
 
         {/* Boss / primary mob HP */}
-        {primaryMob && (
-          <div className="bg-black/30 rounded p-2">
+        {primaryMob && !roomCleared && (
+          <div className="bg-black/40 border border-white/5 rounded p-2">
             <div className="flex justify-between mb-1">
-              <span className={`font-bold ${primaryMob.is_named ? 'text-purple-300' : primaryMob.is_elite ? 'text-orange-400' : 'text-red-400'}`}>
-                {primaryMob.is_named ? '⚑ ' : primaryMob.is_elite ? '★ ' : ''}{primaryMob.name}
-                {aliveMobs.length > 1 && <span className="text-gray-500 ml-1">+{aliveMobs.length - 1} more</span>}
+              <span className={`font-bold tracking-wide ${primaryMob.is_named ? 'text-purple-300' : primaryMob.is_elite ? 'text-orange-400' : 'text-red-400'}`}>
+                {primaryMob.is_named ? '⚑ ' : primaryMob.is_elite ? '★ ' : ''}
+                {primaryMob.name}
+                {aliveMobs.length > 1 && <span className="text-gray-600 ml-2 font-normal">+{aliveMobs.length - 1} more</span>}
               </span>
-              <span className="text-gray-400">{primaryMob.hp} / {primaryMob.max_hp} HP</span>
+              <span className="text-gray-500 text-[10px]">{primaryMob.hp} / {primaryMob.max_hp} HP</span>
             </div>
-            <div className="progress-container" style={{ height: '8px' }}>
-              <div className="target-hp-fill transition-all duration-300"
-                style={{ width: `${hpPct(primaryMob.hp, primaryMob.max_hp)}%`, height: '100%', borderRadius: '1px' }} />
+            <div className="w-full rounded bg-black/60" style={{ height: '8px' }}>
+              <div
+                className={`${hpColor(hpPct(primaryMob.hp, primaryMob.max_hp))} h-full rounded transition-all duration-300`}
+                style={{ width: `${hpPct(primaryMob.hp, primaryMob.max_hp)}%` }}
+              />
             </div>
           </div>
         )}
 
         {run.boss_enraged && !roomCleared && (
-          <div className="text-center text-red-400 font-bold py-1 border border-red-800/50 bg-red-900/20 rounded animate-pulse">
-            ⚡ ENRAGED — BOSS DAMAGE +40%
+          <div className="text-center text-red-300 font-bold py-1 border border-red-700/60 bg-red-950/40 rounded animate-pulse tracking-widest text-[10px]">
+            ⚡ ENRAGED — BOSS DAMAGE +40% ⚡
           </div>
         )}
+
         {roomCleared && (
-          <div className={`text-center font-bold py-1 border rounded ${
+          <div className={`text-center font-bold py-2 border rounded tracking-widest ${
             run.status === 'cleared' && run.is_raid
-              ? 'text-purple-300 border-purple-700/50 bg-purple-900/20'
-              : 'text-yellow-400 border-yellow-800/50 bg-yellow-900/20'
+              ? 'text-amber-300 border-amber-700/50 bg-amber-950/30'
+              : run.status === 'cleared'
+              ? 'text-yellow-300 border-yellow-700/50 bg-yellow-950/30'
+              : 'text-green-400 border-green-800/50 bg-green-950/20'
           }`}>
             {run.status === 'cleared' && run.is_raid
-              ? '★ RAID CLEARED — NEW TIER UNLOCKED'
+              ? '★ RAID CLEARED — NEW TIER UNLOCKED ★'
               : run.status === 'cleared'
               ? '★ DUNGEON CLEARED!'
               : '✓ ROOM CLEARED — ADVANCE WHEN READY'}
@@ -1214,35 +1220,41 @@ export default function Home() {
 
         {/* Party rows */}
         <div className="flex flex-col gap-1 flex-1">
-          <div className="text-gray-600 text-[10px] tracking-widest mb-1">── PARTY ──</div>
+          <div className="text-gray-600 text-[10px] tracking-widest mb-1">── PARTY ──────────────────────────</div>
 
           {/* Player row */}
-          <div className="flex items-center gap-2 bg-black/20 rounded px-2 py-1">
-            <span className="w-14 text-accent font-bold truncate">{player?.name || 'YOU'}</span>
-            <span className="w-14 text-gray-500 truncate">{player?.char_class}</span>
-            <div className="flex-1 progress-container" style={{ height: '6px' }}>
-              <div className={`${hpColor(hpPct(player?.hp ?? 1, player?.max_hp ?? 1))} h-full transition-all duration-300`}
-                style={{ width: `${hpPct(player?.hp ?? 1, player?.max_hp ?? 1)}%`, borderRadius: '1px' }} />
+          <div className="flex items-center gap-2 bg-black/30 border border-white/5 rounded px-2 py-1">
+            <span className="text-[10px] text-gray-600">⚔</span>
+            <span className="w-16 text-accent font-bold truncate">{player?.name || 'YOU'}</span>
+            <span className="w-12 text-gray-500 text-[10px] truncate">{player?.char_class}</span>
+            <div className="flex-1 rounded bg-black/50" style={{ height: '6px' }}>
+              <div
+                className={`${hpColor(hpPct(player?.hp ?? 1, player?.max_hp ?? 1))} h-full rounded transition-all duration-300`}
+                style={{ width: `${hpPct(player?.hp ?? 1, player?.max_hp ?? 1)}%` }}
+              />
             </div>
-            <span className="w-16 text-right text-gray-400 text-[10px]">{player?.hp}/{player?.max_hp}</span>
+            <span className="w-20 text-right text-gray-500 text-[10px]">{player?.hp}/{player?.max_hp}</span>
           </div>
 
           {/* AI party member rows */}
           {(run.party || []).map((m: any) => {
             const pct = hpPct(m.hp, m.max_hp);
+            const roleIcon = m.role === 'healer' ? '✦' : m.role === 'tank' ? '🛡' : '⚔';
             const roleColor = m.role === 'healer' ? 'text-green-400' : m.role === 'tank' ? 'text-blue-400' : 'text-red-400';
             return (
-              <div key={m.id} className={`flex items-center gap-2 bg-black/20 rounded px-2 py-1 ${!m.is_alive ? 'opacity-30' : ''}`}>
-                <span className="w-14 text-gray-200 font-bold truncate">{m.name}</span>
-                <span className={`w-14 truncate text-[10px] ${roleColor}`}>{m.char_class}</span>
-                <div className="flex-1 progress-container" style={{ height: '6px' }}>
+              <div key={m.id} className={`flex items-center gap-2 bg-black/30 border border-white/5 rounded px-2 py-1 ${!m.is_alive ? 'opacity-25' : ''}`}>
+                <span className={`text-[10px] ${roleColor}`}>{roleIcon}</span>
+                <span className="w-16 text-gray-200 font-bold truncate">{m.name}</span>
+                <span className={`w-12 truncate text-[10px] ${roleColor}`}>{m.char_class}</span>
+                <div className="flex-1 rounded bg-black/50" style={{ height: '6px' }}>
                   {m.is_alive
-                    ? <div className={`${hpColor(pct)} h-full transition-all duration-300`}
-                        style={{ width: `${pct}%`, borderRadius: '1px' }} />
-                    : <div className="bg-gray-800 h-full w-full" style={{ borderRadius: '1px' }} />
+                    ? <div className={`${hpColor(pct)} h-full rounded transition-all duration-300`} style={{ width: `${pct}%` }} />
+                    : <div className="bg-gray-900 h-full w-full rounded" />
                   }
                 </div>
-                <span className="w-28 text-right text-gray-500 text-[10px] truncate">{m.is_alive ? m.last_action : '💀 DEAD'}</span>
+                <span className="w-28 text-right text-gray-600 text-[10px] truncate italic">
+                  {m.is_alive ? m.last_action : '💀 fallen'}
+                </span>
               </div>
             );
           })}
@@ -1250,12 +1262,14 @@ export default function Home() {
 
         {/* Rolling combat log */}
         <div className="border-t border-white/10 pt-2">
-          <div className="text-gray-600 text-[10px] tracking-widest mb-1">── LOG ──</div>
-          {(run.combat_log || []).slice(-3).map((line: string, i: number) => (
-            <div key={i} className="text-gray-400 text-[10px] leading-5">▶ {line}</div>
+          <div className="text-gray-700 text-[10px] tracking-widest mb-1">── COMBAT LOG ──────────────────────</div>
+          {(run.combat_log || []).slice(-3).map((line: string, i: number, arr: string[]) => (
+            <div key={i} className={`text-[11px] leading-5 ${i === arr.length - 1 ? 'text-gray-300' : 'text-gray-600'}`}>
+              {i === arr.length - 1 ? '▶ ' : '  '}{line}
+            </div>
           ))}
           {(run.combat_log || []).length === 0 && (
-            <div className="text-gray-600 text-[10px]">Entering {room?.name}...</div>
+            <div className="text-gray-600 text-[10px] italic">Entering {room?.name}...</div>
           )}
         </div>
 
@@ -3239,10 +3253,14 @@ export default function Home() {
         <div className="terminal-column">
           {!dungeonRun && renderWeather()}
           {dungeonRun
-            ? renderDungeonTheater()
+            ? (
+              <div className={`glass-panel terminal-wrapper flex-1${dungeonRun.status === 'active' && !dungeonRun.rooms?.[dungeonRun.room_index]?.cleared ? ' combat-pulse' : ''}`}>
+                {renderDungeonTheater()}
+              </div>
+            )
             : (
               <div
-                className={`glass-panel terminal-wrapper flex-1${levelUpFlash ? ' levelup-flash' : (autoAttackTarget || (dungeonRun && dungeonRun.status === 'active' && !dungeonRun.rooms?.[dungeonRun.room_index]?.cleared)) ? ' combat-pulse' : isHarvesting ? ' harvest-pulse' : isFishing ? ' fish-pulse' : isGathering ? ' gather-pulse' : ''}`}
+                className={`glass-panel terminal-wrapper flex-1${levelUpFlash ? ' levelup-flash' : autoAttackTarget ? ' combat-pulse' : isHarvesting ? ' harvest-pulse' : isFishing ? ' fish-pulse' : isGathering ? ' gather-pulse' : ''}`}
                 onAnimationEnd={() => setLevelUpFlash(false)}
               >
                 <div className="terminal-output" ref={scrollRef}>
@@ -3884,6 +3902,33 @@ export default function Home() {
                   Who
                   <span className="keybind-hint">{currentIdx++}</span>
                 </button>
+
+                {/* DUNGEON button — level 10+, not currently in a run */}
+                {!dungeonRun && (player?.level ?? 0) >= 10 && (
+                  <button
+                    type="button"
+                    className="tool-button relative !text-purple-300/90 !border-purple-900/50"
+                    onClick={() => executeCommand('dungeon')}
+                    title="Enter a dungeon (level 10+)"
+                  >
+                    ⚔ DUNGEON
+                    <span className="keybind-hint">{currentIdx++}</span>
+                  </button>
+                )}
+
+                {/* RAID button — level 20+, not currently in a run */}
+                {!dungeonRun && (player?.level ?? 0) >= 20 && (
+                  <button
+                    type="button"
+                    className="tool-button relative !text-amber-400/90 !border-amber-800/50"
+                    onClick={() => executeCommand('raid')}
+                    title="Enter a raid (level 20+, GS 100+)"
+                  >
+                    ★ RAID
+                    <span className="keybind-hint">{currentIdx++}</span>
+                  </button>
+                )}
+
                 {!dungeonRun && (player?.current_zone_number ?? 1) >= 10 && (
                   <button
                     type="button"
