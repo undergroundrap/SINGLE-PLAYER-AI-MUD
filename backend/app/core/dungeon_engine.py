@@ -268,7 +268,15 @@ def resolve_round(run: DungeonRun, player: Player, dodged: bool = False) -> dict
     combat_player = player.model_copy()
     combat_player.damage = max(1, int(player.damage * player.ascension_damage_mult))
     atk_msgs, mob_dead = combat_engine.resolve_tick(combat_player, primary_mob)
-    round_log.extend(atk_msgs)
+    # Make the player's hit visually distinct from NPC party hits
+    for msg in atk_msgs:
+        if f"{combat_player.name} hits" in msg:
+            dmg_part = msg.split(" for ", 1)[1] if " for " in msg else "?"
+            round_log.append(f"  ⚔ YOU hit {primary_mob.name} for {dmg_part}")
+        elif f"{combat_player.name} misses" in msg:
+            round_log.append(f"  ✗ YOU missed {primary_mob.name}!")
+        else:
+            round_log.append(f"  {msg}")
 
     # ── 2. Each living party member acts ────────────────────────────────────
     living_members = [m for m in run.party if m.is_alive]

@@ -349,6 +349,7 @@ export default function Home() {
       if (!res.ok) { const e = await res.json(); addLog(e.detail || 'Dungeon error', 'error'); return; }
       const data = await res.json();
       setDungeonRun(data.run);
+      if (data.room_cleared || data.wiped) setDungeonAutoAttack(false);
       setPlayer((prev: any) => prev ? {
         ...prev,
         hp:               data.player_hp,
