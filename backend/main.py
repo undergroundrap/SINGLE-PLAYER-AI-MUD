@@ -1001,6 +1001,46 @@ async def fish(player_id: str):
     return {"success": True, "message": f"You catch a {fish_name}!", "item": item.model_dump(mode='json')}
 
 
+@app.post("/action/cook/{player_id}")
+async def cook_fish(player_id: str, item_id: str):
+    """Cook a raw fish at the campfire in a hub location, tripling its sell value."""
+    p_data = await vec_db.get_player(player_id)
+    if not p_data: raise HTTPException(status_code=404, detail="Player not found")
+    player = Player(**p_data)
+
+    z_data = await vec_db.get_zone(player.current_zone_id)
+    if not z_data: return {"success": False, "message": "Zone not found."}
+    zone_obj = Zone(**z_data)
+    loc = next((l for l in zone_obj.locations if l.id == player.current_location_id), None)
+
+    has_campfire = loc and any(n.role == "vendor" for n in loc.npcs)
+    if not has_campfire:
+        return {"success": False, "message": "No campfire here. Head back to the hub."}
+
+    fish = next((i for i in player.inventory if i.id == item_id and i.id.startswith("fish_")), None)
+    if not fish:
+        return {"success": False, "message": "That item can't be cooked — only raw fish can."}
+
+    raw_value = fish.stats.get("value", 5)
+    cooked = Item(
+        id=f"cooked_{item_id}",
+        name=f"Cooked {fish.name}",
+        description=f"A perfectly seared {fish.name.lower()}. Worth far more at market than the raw catch.",
+        level=fish.level,
+        rarity="Common",
+        stats={"value": raw_value * 3},
+        slot="material",
+    )
+    player.inventory = [i for i in player.inventory if i.id != item_id]
+    player.inventory.append(cooked)
+    await vec_db.save_player(player_id, player.model_dump(mode='json'))
+    return {
+        "success": True,
+        "message": f"🔥 You cook the {fish.name} over the campfire → Cooked {fish.name} (sell value ×3).",
+        "item": cooked.model_dump(mode='json'),
+    }
+
+
 # ──────────────────────────────────────────────
 # PATROL ENCOUNTERS
 # ──────────────────────────────────────────────

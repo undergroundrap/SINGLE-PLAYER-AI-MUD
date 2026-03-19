@@ -710,6 +710,10 @@ export default function Home() {
     if (locRes.length > 0 && locRes[0]) hb.set(idx++, () => executeCommand('harvest'));
     if (locRes.length > 1 && locRes[1]) hb.set(idx++, () => executeCommand('fish'));
 
+    const atHub = loc?.npcs?.some((n: any) => n.role === 'vendor');
+    const hasFishToCook = (player?.inventory || []).some((i: any) => i.id?.startsWith('fish_'));
+    if (atHub && hasFishToCook) hb.set(idx++, () => executeCommand('cook'));
+
     hb.set(idx++, () => executeCommand('quests'));
     hb.set(idx++, () => executeCommand('inventory'));
     hb.set(idx++, () => executeCommand('who'));
@@ -2826,6 +2830,39 @@ export default function Home() {
           }
         })();
 
+      } else if (lowerCmd.startsWith('cook')) {
+        if (!playerId) return;
+        const cookArg = lowerCmd.slice(4).trim();
+        const fishToCook: any[] = (player?.inventory || []).filter((i: any) =>
+          i.id?.startsWith('fish_') && (cookArg === '' || i.name.toLowerCase().includes(cookArg))
+        );
+        if (!fishToCook.length) { addLog("No raw fish to cook. Catch some fish first.", "hint"); return; }
+        (async () => {
+          try {
+            let cookedCount = 0;
+            let removedIds: string[] = [];
+            let addedItems: any[] = [];
+            for (const fish of fishToCook) {
+              const res = await fetch(`http://localhost:8000/action/cook/${playerId}?item_id=${encodeURIComponent(fish.id)}`, { method: 'POST' });
+              const data = await res.json();
+              if (!data.success) { addLog(data.message, "hint"); break; }
+              cookedCount++;
+              removedIds.push(fish.id);
+              if (data.item) addedItems.push(data.item);
+            }
+            if (cookedCount > 0) {
+              addLog(`🔥 Cooked ${cookedCount} fish over the campfire — sell value ×3.`, "system");
+              setPlayer((prev: any) => {
+                if (!prev) return prev;
+                const inv = (prev.inventory || []).filter((i: any) => !removedIds.includes(i.id));
+                return { ...prev, inventory: [...inv, ...addedItems] };
+              });
+            }
+          } catch (err: any) {
+            addLog(`Cook error: ${err.message}`, "error");
+          }
+        })();
+
       } else if (lowerCmd === 'advance' || lowerCmd === 'next room') {
         if (!dungeonRun) {
           addLog("You are not in a dungeon.", "hint");
@@ -3992,9 +4029,12 @@ export default function Home() {
 
             const completedQuests = (player?.active_quests || []).filter((q: any) => q.is_completed);
             const hasQuestGiver = loc?.npcs?.some((n: any) => n.role === 'quest_giver');
+            const hasVendorHere = loc?.npcs?.some((n: any) => n.role === 'vendor');
             const locResources: string[] = loc?.resources || [];
             const hasPlant = locResources.length > 0 && !!locResources[0];
             const hasFish  = locResources.length > 1 && !!locResources[1];
+            const rawFishInBag = (player?.inventory || []).filter((i: any) => i.id?.startsWith('fish_'));
+            const hasCookable = hasVendorHere && rawFishInBag.length > 0;
 
             return (
               <>
@@ -4210,6 +4250,19 @@ export default function Home() {
                     title={`Fish for ${locResources[1]}`}
                   >
                     <span className="relative">{isFishing ? 'Fishing...' : `🎣 ${locResources[1]}`}</span>
+                    <span className="keybind-hint">{currentIdx++}</span>
+                  </button>
+                )}
+
+                {/* COOK — shown at hub when raw fish are in inventory */}
+                {hasCookable && (
+                  <button
+                    type="button"
+                    className="tool-button relative overflow-hidden !text-orange-400/90 !border-orange-900/50"
+                    onClick={() => executeCommand('cook')}
+                    title={`Cook fish at the campfire (×${rawFishInBag.length}) — triples sell value`}
+                  >
+                    <span className="relative">🔥 Cook Fish ×{rawFishInBag.length}</span>
                     <span className="keybind-hint">{currentIdx++}</span>
                   </button>
                 )}

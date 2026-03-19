@@ -324,7 +324,7 @@ _STARTER_TEMPLATES = [
     {
         "name": "Whispering Glade",
         "desc": "A lush, emerald forest teeming with life and ancient secrets.",
-        "hub": ("Oakhaven Abbey", "A majestic stone abbey serving as a bastion of the Light."),
+        "hub": ("Oakhaven Abbey", "A majestic stone abbey serving as a bastion of the Light. A campfire crackles near the entrance — locals use it to cook their catch."),
         "pois": [
             ("Deep Mines", "An abandoned mine overrun by pests."),
             ("Silver Lake", "A serene lake sparkling with magical residue."),
@@ -341,7 +341,7 @@ _STARTER_TEMPLATES = [
     {
         "name": "Moonshaded Glade",
         "desc": "A mystical nocturnal woodland bathed in the glow of the World Tree.",
-        "hub": ("Ancient World Tree", "A massive, hollowed out tree serving as a home for the Elves."),
+        "hub": ("Ancient World Tree", "A massive, hollowed out tree serving as a home for the Elves. Embers glow in a stone ring at its roots where fresh catch is cooked each evening."),
         "pois": [
             ("Shadowed Hollow", "A dark den of spiders and shadows."),
             ("Moonlit Lake", "A tranquil pool reflecting the starry sky."),
@@ -358,7 +358,7 @@ _STARTER_TEMPLATES = [
     {
         "name": "Saltcliff Reach",
         "desc": "A rugged coastline of jagged rocks and salt-sprayed ruins, watched over by circling sea birds.",
-        "hub": ("Saltcliff Outpost", "A battered watchtower clinging to the cliff's edge, manned by desperate scouts."),
+        "hub": ("Saltcliff Outpost", "A battered watchtower clinging to the cliff's edge, manned by desperate scouts. A driftwood campfire smokes in the courtyard — the scouts cook their fish here to fetch a better price."),
         "pois": [
             ("Smuggler's Cove", "A sea cave riddled with contraband and feral hounds."),
             ("Wreckers' Shoal", "Shallow reefs littered with the remains of a dozen ships."),
@@ -375,7 +375,7 @@ _STARTER_TEMPLATES = [
     {
         "name": "The Ashen Fields",
         "desc": "Rolling plains of scorched earth and withered grass, still warm from fires no one alive remembers.",
-        "hub": ("Ember Crossing", "A fortified crossroads built on the ashes of an older settlement."),
+        "hub": ("Ember Crossing", "A fortified crossroads built on the ashes of an older settlement. A communal fire pit burns at the center — travelers cook their catch here before heading to market."),
         "pois": [
             ("Charred Hollow", "A depression in the fields where swamp rats breed by the hundreds."),
             ("Blackthorn Thicket", "Twisted, leafless trees bristling with plague rats."),
@@ -392,7 +392,7 @@ _STARTER_TEMPLATES = [
     {
         "name": "Barrowmoor",
         "desc": "Fog-drenched wetlands where old burial mounds push up through the peat like sleeping giants.",
-        "hub": ("Mourner's Rest", "A grim inn built beside the oldest mound, where grave-wardens drink and wait."),
+        "hub": ("Mourner's Rest", "A grim inn built beside the oldest mound, where grave-wardens drink and wait. A hearth fire burns low in the common room — the barkeep lets travelers cook their catch for a share of the smell."),
         "pois": [
             ("The Sunken Graves", "Half-flooded burial pits where cave bats roost in the dark."),
             ("Peat Bog", "Deep black water that swallows sound — and those who wade into it."),
