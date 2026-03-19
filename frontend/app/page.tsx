@@ -3001,12 +3001,12 @@ export default function Home() {
           } catch (err: any) { addLog(`Sell Error: ${err.message}`, "error"); }
         }
 
-      } else if (/^sell (uncommons?|rares?|epics?|legendar(y|ies))$/.test(lowerCmd)) {
+      } else if (/^sell (uncommons?|rares?|epics?|legendarys?|legendaries)$/.test(lowerCmd)) {
         const tierMap: Record<string, string> = {
           uncommon: 'Uncommon', uncommons: 'Uncommon',
           rare: 'Rare', rares: 'Rare',
           epic: 'Epic', epics: 'Epic',
-          legendary: 'Legendary', legendaries: 'Legendary',
+          legendary: 'Legendary', legendarys: 'Legendary', legendaries: 'Legendary',
         };
         const rarity = tierMap[lowerCmd.split(' ')[1]];
         const loc = zone?.locations?.find((l: any) => l.id === player?.current_location_id);
