@@ -37,6 +37,8 @@ Players are single-player but exist in a world populated by simulated entities (
 
 Every class has a unique **auto-firing passive proc** that triggers mid-combat without any input — Rogues evade, Warlocks drain life, Paladins self-heal. Combat is intentionally hands-off so players can focus on questing, chatting, and exploring while loot and levels accumulate. Dungeon and raid portals are always visible in the sidebar from level 1 so players always know what they're working toward.
 
+Any input that isn't a recognized game command is passed to the local LLM as a **freeform roleplay action**. Type `jump up and down`, `bow to the merchant`, or `examine the strange rune on the wall` and the AI responds with an in-world atmospheric description grounded in your current location. This turns the command line into a genuine text adventure — the world reacts to anything you try, not just the commands the engine explicitly handles.
+
 ---
 
 ## The Infinite Loop — Foundational Mechanic

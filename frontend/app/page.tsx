@@ -4328,6 +4328,10 @@ Zone 10 takes 48 hours your first cycle. After 20 ascensions it takes 20 minutes
 
 HP, damage, XP, and gold are shown in K / M / B / T notation as they grow. After hundreds of ascensions, your damage multiplier will be in the billions. That is intended — the power fantasy is watching the same Zone 1 mobs evaporate instantly after years of progress.
 
+## Freeform Roleplay
+
+Anything that isn't a recognized command is passed to the AI as a **freeform action**. Type \`bow to the merchant\`, \`examine the strange rune\`, or \`sit by the fire\` and the world responds with an atmospheric description grounded in your current location. You're not limited to the command list — the engine reacts to anything.
+
 ## Quick Commands
 
 \`\`\`
