@@ -439,8 +439,8 @@ def resolve_round(run: DungeonRun, player: Player, dodged: bool = False) -> dict
     # Level-up loop
     leveled_up = apply_levelups(player, round_log)
 
-    # ── 9a. Keep rolling combat log (last 5 meaningful lines) ────────────────
-    run.combat_log = (run.combat_log + round_log)[-5:]
+    # ── 9a. Keep full scrollable history (last 100 lines) ────────────────────
+    run.combat_log = (run.combat_log + round_log)[-100:]
 
     # ── 9. Roll loot on boss death ────────────────────────────────────────────
     # Dungeon: zone_tier="dungeon" (1.6× stats), 1-2 items

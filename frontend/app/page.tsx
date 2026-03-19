@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from 'react';
+import ReactMarkdown from 'react-markdown';
 
 interface LogEntry {
   text: string;
@@ -4122,58 +4123,63 @@ export default function Home() {
           >
             <div className="panel-header header-nav mb-6 text-base">HOW TO PLAY</div>
 
-            <div className="space-y-5" style={{ color: '#e2e8f0' }}>
+            <div className="prose prose-invert prose-sm max-w-none" style={{ color: '#e2e8f0' }}>
+              <ReactMarkdown
+                components={{
+                  h2: ({ children }) => <h2 style={{ color: '#c4a84f', fontWeight: 'bold', fontSize: '11px', letterSpacing: '0.15em', textTransform: 'uppercase', marginTop: '20px', marginBottom: '6px', borderBottom: '1px solid rgba(196,168,79,0.2)', paddingBottom: '4px' }}>{children}</h2>,
+                  p: ({ children }) => <p style={{ marginBottom: '10px', lineHeight: '1.65', color: '#e2e8f0' }}>{children}</p>,
+                  code: ({ children }) => <code style={{ background: 'rgba(255,255,255,0.08)', padding: '1px 5px', borderRadius: '3px', fontFamily: 'var(--font-mono)', fontSize: '11px', color: '#c4a84f' }}>{children}</code>,
+                  pre: ({ children }) => <pre style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '4px', padding: '12px 14px', marginBottom: '10px', overflowX: 'auto', fontSize: '11px', color: '#94a3b8', fontFamily: 'var(--font-mono)' }}>{children}</pre>,
+                  ul: ({ children }) => <ul style={{ paddingLeft: '18px', marginBottom: '10px', color: '#e2e8f0' }}>{children}</ul>,
+                  li: ({ children }) => <li style={{ marginBottom: '4px', listStyleType: 'disc' }}>{children}</li>,
+                  strong: ({ children }) => <strong style={{ color: '#fbbf24', fontWeight: 'bold' }}>{children}</strong>,
+                  em: ({ children }) => <em style={{ color: '#94a3b8' }}>{children}</em>,
+                  hr: () => <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.08)', margin: '16px 0' }} />,
+                }}
+              >{`
+## The Loop
 
-              <div>
-                <div className="text-accent font-bold uppercase tracking-widest text-[10px] mb-1">The Loop</div>
-                <div>Kill mobs → earn XP and gold → level up → unlock dungeons and raids → earn better gear → travel to harder zones → repeat. There is no end. The game is designed to be played for years.</div>
-              </div>
+Kill mobs → earn XP and gold → level up → unlock dungeons and raids → earn better gear → travel to harder zones → repeat. There is no end. The game is designed to be played for years.
 
-              <div>
-                <div className="text-accent font-bold uppercase tracking-widest text-[10px] mb-1">Open World</div>
-                <div>Each zone has a hub (with NPCs), path locations (harvest plants, fish for materials), and POI locations (combat and quests). Talk to quest givers, accept quests, kill mobs to complete them, turn in at the hub for XP. Sell materials at the vendor for gold.</div>
-              </div>
+## Open World
 
-              <div>
-                <div className="text-accent font-bold uppercase tracking-widest text-[10px] mb-1">Dungeons (Level 10+)</div>
-                <div>Type <span className="text-accent">travel dungeon</span>. You enter with a party of 4 NPC companions (tank, healer, 2 DPS). Three rooms of enemies, culminating in a named boss. Watch for telegraphed attacks — click DODGE when they appear. Dungeon loot has 1.6× stat multipliers vs open-world drops.</div>
-              </div>
+Each zone has a hub (with NPCs), path locations (harvest plants, fish for materials), and POI locations (combat and quests). Talk to quest givers, accept quests, kill mobs to complete them, turn in at the hub for XP. Sell materials at the vendor for gold.
 
-              <div>
-                <div className="text-accent font-bold uppercase tracking-widest text-[10px] mb-1">Raids (Level 20+)</div>
-                <div>Type <span className="text-accent">travel raid</span>. Ten-player party, 7 rooms. The boss enters an Enrage phase at 30% HP — telegraphed ANNIHILATE hits become one-shots. Always dodge. Raid loot is the best gear in the game and what pushes your Gear Score toward the zone travel gate.</div>
-              </div>
+## Dungeons (Level 10+)
 
-              <div>
-                <div className="text-accent font-bold uppercase tracking-widest text-[10px] mb-1">Zone Travel (GS 1000+)</div>
-                <div>Once your Gear Score reaches 1000, type <span className="text-accent">travel</span>. You move to a harder zone scaled to your current level. Each zone in the arc (1–10) is progressively harder — Zone 10 mobs have 2.8× base stats and are designed to be a wall.</div>
-              </div>
+Type \`travel dungeon\`. You enter with a party of 4 NPC companions (tank, healer, 2 DPS). Three rooms of enemies, culminating in a named boss. Watch for telegraphed attacks — click **DODGE** or press **D** when they appear. Dungeon loot has **1.6× stat multipliers** vs open-world drops.
 
-              <div>
-                <div className="text-accent font-bold uppercase tracking-widest text-[10px] mb-1">Ascension — The Meta Loop</div>
-                <div>When you reach <span className="text-amber-400 font-bold">Zone 10</span>, type <span className="text-accent">ascend</span>. Your character resets to level 1 with no gear — but you permanently keep a <span className="text-amber-400">×1.15 damage multiplier</span> that stacks with every future ascension.</div>
-                <div className="mt-2" style={{ color: '#94a3b8' }}>
-                  Ascension 1: ×1.15 · Ascension 5: ×2.01 · Ascension 10: ×4.05 · Ascension 20: ×16.4 · Ascension 50: ×1,083
-                </div>
-                <div className="mt-2">Zone 10 takes 48 hours your first cycle. After 20 ascensions it takes 20 minutes. <span style={{ color: '#94a3b8' }}>That acceleration is the game.</span></div>
-              </div>
+## Raids (Level 20+)
 
-              <div>
-                <div className="text-accent font-bold uppercase tracking-widest text-[10px] mb-1">Numbers Getting Big</div>
-                <div>HP, damage, XP, and gold are shown in K / M / B / T notation as they grow. After hundreds of ascensions, your damage multiplier will be in the billions. That is intended — the power fantasy is watching the same Zone 1 mobs evaporate instantly after years of progress.</div>
-              </div>
+Type \`travel raid\`. Ten-player party, 7 rooms. The boss enters an **Enrage** phase at 30% HP — telegraphed ANNIHILATE hits become one-shots. Always dodge. Raid loot is the best gear in the game and what pushes your Gear Score toward the zone travel gate.
 
-              <div>
-                <div className="text-accent font-bold uppercase tracking-widest text-[10px] mb-1">Quick Commands</div>
-                <div className="font-mono text-[10px] space-y-1 mt-2" style={{ color: '#94a3b8' }}>
-                  <div>look · go [dir] · attack [mob] · talk to [npc]</div>
-                  <div>quests · accept [1/all] · turn in · inventory</div>
-                  <div>harvest · fish · gather · shop · sell · sell junk</div>
-                  <div>travel · travel dungeon · travel raid · ascend</div>
-                  <div>help · who · use healing · use elixir</div>
-                </div>
-              </div>
+## Zone Travel (GS 1000+)
 
+Once your Gear Score reaches 1000, type \`travel\`. You move to a harder zone scaled to your current level. Each zone in the arc (1–10) is progressively harder — Zone 10 mobs have **2.8× base stats** and are designed to be a wall.
+
+## Ascension — The Meta Loop
+
+When you reach **Zone 10**, type \`ascend\`. Your character resets to level 1 with no gear — but you permanently keep a **×1.15 damage multiplier** that stacks with every future ascension.
+
+- Ascension 1: ×1.15 · Ascension 5: ×2.01 · Ascension 10: ×4.05
+- Ascension 20: ×16.4 · Ascension 50: ×1,083
+
+Zone 10 takes 48 hours your first cycle. After 20 ascensions it takes 20 minutes. *That acceleration is the game.*
+
+## Numbers Getting Big
+
+HP, damage, XP, and gold are shown in K / M / B / T notation as they grow. After hundreds of ascensions, your damage multiplier will be in the billions. That is intended — the power fantasy is watching the same Zone 1 mobs evaporate instantly after years of progress.
+
+## Quick Commands
+
+\`\`\`
+look · go [dir] · attack [mob] · talk to [npc]
+quests · accept [1/all] · turn in · inventory
+harvest · fish · gather · shop · sell · sell junk
+travel · travel dungeon · travel raid · ascend
+help · who · use healing · use elixir
+\`\`\`
+              `}</ReactMarkdown>
             </div>
 
             <div className="flex gap-3 mt-8">
