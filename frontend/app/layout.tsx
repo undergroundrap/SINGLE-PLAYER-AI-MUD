@@ -4,6 +4,12 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Infinite AI MUD",
   description: "A procedurally generated single-player MMORPG powered by LM Studio.",
+  icons: {
+    icon: "/assets/ui/logo.png",
+    shortcut: "/assets/ui/logo.png",
+    apple: "/assets/ui/logo.png",
+  },
+  manifest: "/manifest.webmanifest",
 };
 
 export default function RootLayout({

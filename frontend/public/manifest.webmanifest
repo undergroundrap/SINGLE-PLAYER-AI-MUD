@@ -1,0 +1,17 @@
+{
+  "name": "Infinite AI MUD",
+  "short_name": "AI MUD",
+  "description": "A procedurally generated single-player MMORPG powered by LM Studio.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0d0d0d",
+  "theme_color": "#0d0d0d",
+  "icons": [
+    {
+      "src": "/assets/ui/logo.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
