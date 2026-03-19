@@ -4236,7 +4236,7 @@ Each zone has a hub (with NPCs), path locations (harvest plants, fish for materi
 
 ## Dungeons (Level 10+)
 
-Type \`travel dungeon\`. You enter with a party of 4 NPC companions (tank, healer, 2 DPS). Three rooms of enemies, culminating in a named boss. Watch for telegraphed attacks — click **DODGE** or press **D** when they appear. Dungeon loot has **1.6× stat multipliers** vs open-world drops.
+Type \`travel dungeon\`. You enter with a party of 4 NPC companions (tank, healer, 2 DPS). Three rooms of enemies, culminating in a named boss. Watch for telegraphed attacks — click **DODGE** or press **[2]** when they appear. Dungeon loot has **1.6× stat multipliers** vs open-world drops.
 
 ## Raids (Level 20+)
 
@@ -4264,10 +4264,22 @@ HP, damage, XP, and gold are shown in K / M / B / T notation as they grow. After
 \`\`\`
 look · go [dir] · attack [mob] · talk to [npc]
 quests · accept [1/all] · turn in · inventory
-harvest · fish · gather · shop · sell · sell junk
-travel · travel dungeon · travel raid · ascend
+harvest · fish · gather · forage
+shop · buy [#] · sell · sell all
+sell uncommons · sell rares · sell epics · sell legendaries
+travel · travel dungeon · travel raid · ascend · flee
 help · who · use healing · use elixir
 \`\`\`
+
+**sell all** auto-clears Common items, then offers clickable options to sell Uncommon / Rare / Epic / Legendary tiers individually so you never accidentally vendor gear you want to keep.
+
+## Keybinds (Combat)
+
+- **[1]** Attack / toggle auto-attack
+- **[2]** Dodge telegraphed attack (when DODGE button appears)
+- **[2]** Flee dungeon (when no telegraph)
+- **[3]** Flee dungeon (when DODGE is showing)
+- **Number keys** activate toolbar actions at a hub
               `}</ReactMarkdown>
             </div>
 
