@@ -3669,31 +3669,76 @@ export default function Home() {
       {step === 'game' && (
         <div className="quick-toolbar">
 
-          {/* ── DUNGEON / RAID TOOLBAR ── replaces open-world bar during a run */}
+          {/* ── DUNGEON / RAID TOOLBAR ── 1:1 with open world feel */}
           {dungeonRun && (() => {
             const run = dungeonRun;
             const room = run.rooms?.[run.room_index];
             const aliveMobs = (room?.mobs || []).filter((m: any) => m.hp > 0);
+            const primaryMob = aliveMobs[0] || room?.mobs?.find((m: any) => m.is_named || m.is_elite) || room?.mobs?.[0];
             const roomCleared = room?.cleared || aliveMobs.length === 0;
             const isLastRoom = run.room_index >= (run.rooms?.length ?? 1) - 1;
             const tel = run.pending_telegraph;
+            const dodgePct = tel ? Math.max(0, (dodgeTimeLeft / (tel.window_ms ?? 3000)) * 100) : 0;
+            let dIdx = 1;
+            // Mob color — identical to open world
+            const isNamed = primaryMob?.is_named;
+            const isElite = primaryMob?.is_elite;
+            const textCls = isNamed ? '!text-purple-300/90' : isElite ? '!text-orange-400/90' : '!text-red-400/80';
+            const borderCls = dungeonAutoAttack ? 'mob-active-pulse' : isNamed ? '!border-purple-900/60' : isElite ? '!border-orange-900/50' : '!border-red-900/40';
+            const mobLabel = isNamed ? `⚑ ${primaryMob?.name}` : isElite ? `★ ${primaryMob?.name}` : (primaryMob?.name || 'Enemy');
             return (
               <>
-                {/* ATTACK — always [1]; grayed when telegraph is active (dodge is in target frame) */}
-                {run.status === 'active' && !roomCleared && (
+                {/* ATTACK — identical pattern to open world attack button */}
+                {run.status === 'active' && !roomCleared && primaryMob && (
                   <button
-                    className={`tool-button flex-1 relative overflow-hidden !text-red-400
-                      ${(dungeonAttacking || !!tel) ? 'opacity-50 cursor-not-allowed' : dungeonAutoAttack ? '!border-red-700/80 !bg-red-950/20' : '!border-red-900/40'}`}
-                    disabled={dungeonAttacking || !!tel}
+                    type="button"
+                    className={`tool-button relative overflow-hidden ${textCls} ${borderCls} ${dungeonAttacking ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    disabled={dungeonAttacking}
                     onClick={() => { if (dungeonAutoAttack) { setDungeonAutoAttack(false); } else { setDungeonAutoAttack(true); fireDungeonAttack(false); } }}
+                    title={dungeonAutoAttack ? `Auto-attacking ${primaryMob.name} — click to stop` : `Attack ${primaryMob.name}`}
                   >
-                    <div className="absolute inset-0 bg-red-900/30 origin-left transition-none" style={{ transform: `scaleX(${dungeonAttackCd / 100})` }} />
-                    <span className="relative z-10">{dungeonAttacking ? '...' : dungeonAutoAttack ? '⚔ AUTO ■' : '⚔ ATTACK'}</span>
-                    <span className="keybind-hint">1</span>
+                    {dungeonAutoAttack && (
+                      <div className="absolute inset-0 bg-red-900/30 origin-left transition-none" style={{ transform: `scaleX(${dungeonAttackCd / 100})` }} />
+                    )}
+                    <span className="relative z-10">⚔ {mobLabel}{dungeonAutoAttack ? ' ■' : ''}</span>
+                    <span className="keybind-hint">{dIdx++}</span>
                   </button>
                 )}
 
-                {/* CONSUMABLES — heal + elixir if in inventory */}
+                {/* DODGE — separate button in toolbar (same style as target frame), also in target frame */}
+                {run.status === 'active' && !roomCleared && tel && (
+                  <button
+                    type="button"
+                    className={`tool-button relative overflow-hidden animate-pulse
+                      ${tel.is_oneshot ? '!text-white !border-red-500 !bg-red-900/30' : '!text-yellow-300 !border-yellow-600/80 !bg-yellow-900/20'}
+                      ${dungeonAttacking ? 'opacity-60' : ''}`}
+                    disabled={dungeonAttacking}
+                    onClick={() => fireDungeonAttack(true)}
+                  >
+                    <div className={`absolute left-0 top-0 h-full transition-none ${tel.is_oneshot ? 'bg-red-600/40' : 'bg-yellow-600/30'}`} style={{ width: `${dodgePct}%` }} />
+                    <span className="relative z-10">☽ DODGE{tel.is_oneshot ? ' !' : ''}</span>
+                    <span className="keybind-hint">D</span>
+                  </button>
+                )}
+
+                {/* FLEE — identical to open world flee (orange, same label) */}
+                {run.status === 'active' && !roomCleared && (
+                  <button
+                    type="button"
+                    className="tool-button relative !text-orange-400/80 !border-orange-900/40"
+                    onClick={async () => {
+                      await fetch(`http://localhost:8000/dungeon/flee/${run.id}?player_id=${playerId}`, { method: 'POST' });
+                      setDungeonRun(null);
+                      addLog('You flee the dungeon.', 'system');
+                    }}
+                    title="Flee from the dungeon"
+                  >
+                    ↩ Flee
+                    <span className="keybind-hint">{dIdx++}</span>
+                  </button>
+                )}
+
+                {/* CONSUMABLES — heal + elixir, same as open world USE buttons */}
                 {run.status === 'active' && (() => {
                   const consumables = (player?.inventory || []).filter((i: any) => i.slot === 'consumable');
                   const deduped: Record<string, { item: any; count: number }> = {};
@@ -3705,6 +3750,7 @@ export default function Home() {
                     return (
                       <button
                         key={item.name}
+                        type="button"
                         className={`tool-button relative ${isHeal ? '!text-green-400/80 !border-green-900/50' : '!text-yellow-400/80 !border-yellow-900/50'} ${onCd ? 'opacity-40 cursor-not-allowed' : ''}`}
                         disabled={onCd}
                         onClick={() => usePotion(item.id)}
@@ -3716,10 +3762,11 @@ export default function Home() {
                   });
                 })()}
 
-                {/* ADVANCE — [1] when room cleared (replaces attack) */}
+                {/* ADVANCE — room cleared, not last room */}
                 {run.status === 'active' && roomCleared && !isLastRoom && (
                   <button
-                    className="tool-button flex-1 !text-yellow-400 !border-yellow-800/50"
+                    type="button"
+                    className="tool-button relative !text-yellow-400 !border-yellow-800/50"
                     onClick={async () => {
                       const res = await fetch(`http://localhost:8000/dungeon/advance/${run.id}?player_id=${playerId}`, { method: 'POST' });
                       if (res.ok) { const d = await res.json(); setDungeonRun(d); addLog(`→ Entering ${d.rooms?.[d.room_index]?.name}...`, 'system'); }
@@ -3729,10 +3776,11 @@ export default function Home() {
                   </button>
                 )}
 
-                {/* RETURN TO WORLD — [1] when run is fully cleared */}
+                {/* RETURN TO WORLD — run fully cleared */}
                 {(run.status === 'cleared' || (run.status === 'active' && roomCleared && isLastRoom)) && (
                   <button
-                    className="tool-button flex-1 !text-yellow-300 !border-yellow-700/60"
+                    type="button"
+                    className="tool-button relative !text-yellow-300 !border-yellow-700/60"
                     onClick={async () => {
                       await fetch(`http://localhost:8000/dungeon/flee/${run.id}?player_id=${playerId}`, { method: 'POST' });
                       setDungeonRun(null);
@@ -3740,20 +3788,6 @@ export default function Home() {
                     }}
                   >
                     ★ RETURN TO WORLD<span className="keybind-hint">1</span>
-                  </button>
-                )}
-
-                {/* FLEE — [2] during active combat, hidden when cleared */}
-                {run.status === 'active' && (
-                  <button
-                    className="tool-button !text-gray-500 !border-gray-800"
-                    onClick={async () => {
-                      await fetch(`http://localhost:8000/dungeon/flee/${run.id}?player_id=${playerId}`, { method: 'POST' });
-                      setDungeonRun(null);
-                      addLog('You flee the dungeon.', 'system');
-                    }}
-                  >
-                    FLEE<span className="keybind-hint">2</span>
                   </button>
                 )}
 
@@ -3849,6 +3883,28 @@ export default function Home() {
                   currentIdx++;
                   return btn;
                 })}
+
+                {/* DODGE — shown in toolbar when a telegraph fires (also in target frame) */}
+                {owTelegraph && (
+                  <button
+                    type="button"
+                    className={`tool-button relative overflow-hidden animate-pulse
+                      ${owTelegraph.is_oneshot ? '!text-white !border-red-500 !bg-red-900/30' : '!text-yellow-300 !border-yellow-600/80 !bg-yellow-900/20'}`}
+                    onClick={() => {
+                      if (owTeleTimerRef.current) { clearTimeout(owTeleTimerRef.current); owTeleTimerRef.current = null; }
+                      if (owTeleIntervalRef.current) { clearInterval(owTeleIntervalRef.current); owTeleIntervalRef.current = null; }
+                      setOwTelegraph(null);
+                      setOwDodgeTimeLeft(0);
+                      owDodgePendingRef.current = true;
+                      if (autoAttackTarget) executeCommand(`attack ${autoAttackTarget}`);
+                    }}
+                  >
+                    <div className={`absolute left-0 top-0 h-full transition-none ${owTelegraph.is_oneshot ? 'bg-red-600/40' : 'bg-yellow-600/30'}`}
+                      style={{ width: `${Math.max(0, (owDodgeTimeLeft / (owTelegraph.window_ms ?? 3000)) * 100)}%` }} />
+                    <span className="relative z-10">☽ DODGE — {owTelegraph.name}</span>
+                    <span className="keybind-hint">D</span>
+                  </button>
+                )}
 
                 {/* Flee button during auto-attack */}
                 {autoAttackTarget && (
