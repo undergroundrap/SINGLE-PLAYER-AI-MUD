@@ -384,9 +384,17 @@ body.combat-flash {
   top: 100px;
   left: 50%;
   transform: translateX(-50%);
-  width: 320px;
+  width: 340px;
   z-index: 1000;
   animation: slideInDown 0.3s ease-out;
+}
+
+.target-frame--elite {
+  width: 400px;
+}
+
+.target-frame--named {
+  width: 480px;
 }
 
 @keyframes slideInDown {
