@@ -1669,6 +1669,37 @@ async def vendor_sell(player_id: str, item_id: str):
     }
 
 
+@app.post("/vendor/sell_rarity/{player_id}")
+async def vendor_sell_rarity(player_id: str, rarity: str = "Common"):
+    """Sell all non-consumable items of a specific rarity tier at once."""
+    valid = {"Common", "Uncommon", "Rare", "Epic", "Legendary"}
+    if rarity not in valid:
+        raise HTTPException(status_code=400, detail=f"Invalid rarity. Must be one of: {', '.join(valid)}")
+    p_data = await vec_db.get_player(player_id)
+    if not p_data: raise HTTPException(status_code=404, detail="Player not found")
+    player = Player(**p_data)
+
+    batch = [i for i in player.inventory if i.rarity == rarity and i.slot != "consumable"]
+    if not batch:
+        return {"success": True, "message": f"No {rarity} items to sell.", "gold_gained": 0,
+                "player_gold": player.gold, "sold_count": 0, "rarity": rarity}
+
+    total_gold = sum(max(1, int(i.level * sum(i.stats.values()) * 0.8)) for i in batch)
+    player.gold += total_gold
+    sold_ids = {i.id for i in batch}
+    player.inventory = [i for i in player.inventory if i.id not in sold_ids]
+
+    await vec_db.save_player(player_id, player.model_dump(mode='json'))
+    return {
+        "success":    True,
+        "message":    f"Sold {len(batch)} {rarity} item(s) for {total_gold} gold.",
+        "gold_gained": total_gold,
+        "player_gold": player.gold,
+        "sold_count":  len(batch),
+        "rarity":      rarity,
+    }
+
+
 @app.post("/vendor/sell_junk/{player_id}")
 async def vendor_sell_junk(player_id: str):
     """Sell every Common-rarity non-consumable item in inventory at once."""

@@ -2923,14 +2923,53 @@ export default function Home() {
         } else if (!playerId) { addLog("Character not found.", "error"); }
         else {
           try {
+            // Step 1: auto-sell commons
             const res = await fetch(`http://localhost:8000/vendor/sell_junk/${playerId}`, { method: 'POST' });
+            const data = await res.json();
+            addLog(data.message, data.sold_count > 0 ? "system" : "hint");
+            const freshInv = data.sold_count > 0
+              ? (player?.inventory || []).filter((i: any) => i.rarity !== "Common" || i.slot === "consumable")
+              : (player?.inventory || []);
+            if (data.sold_count > 0) {
+              setPlayer((prev: any) => ({ ...prev, gold: data.player_gold, inventory: freshInv }));
+            }
+            // Step 2: show clickable options for each higher rarity that has items
+            const TIERS = ['Uncommon', 'Rare', 'Epic', 'Legendary'] as const;
+            const hasHigher = TIERS.some(t => freshInv.some((i: any) => i.rarity === t && i.slot !== 'consumable'));
+            if (hasHigher) {
+              addLog("── What else to sell? ──────────────────", "system");
+              TIERS.forEach(tier => {
+                const count = freshInv.filter((i: any) => i.rarity === tier && i.slot !== 'consumable').length;
+                if (count > 0) {
+                  addLog(`[sell ${tier.toLowerCase()}s] — ${count} ${tier} item${count !== 1 ? 's' : ''}`, "hint");
+                }
+              });
+            }
+          } catch (err: any) { addLog(`Sell Error: ${err.message}`, "error"); }
+        }
+
+      } else if (/^sell (uncommons?|rares?|epics?|legendar(y|ies))$/.test(lowerCmd)) {
+        const tierMap: Record<string, string> = {
+          uncommon: 'Uncommon', uncommons: 'Uncommon',
+          rare: 'Rare', rares: 'Rare',
+          epic: 'Epic', epics: 'Epic',
+          legendary: 'Legendary', legendaries: 'Legendary',
+        };
+        const rarity = tierMap[lowerCmd.split(' ')[1]];
+        const loc = zone?.locations?.find((l: any) => l.id === player?.current_location_id);
+        if (!loc?.npcs?.some((n: any) => n.role === 'vendor')) {
+          addLog("No merchant here to sell to.", "error");
+        } else if (!playerId) { addLog("Character not found.", "error"); }
+        else {
+          try {
+            const res = await fetch(`http://localhost:8000/vendor/sell_rarity/${playerId}?rarity=${rarity}`, { method: 'POST' });
             const data = await res.json();
             addLog(data.message, data.sold_count > 0 ? "system" : "hint");
             if (data.sold_count > 0) {
               setPlayer((prev: any) => ({
                 ...prev,
                 gold: data.player_gold,
-                inventory: (prev.inventory || []).filter((i: any) => i.rarity !== "Common" || i.slot === "consumable"),
+                inventory: (prev.inventory || []).filter((i: any) => i.rarity !== rarity || i.slot === 'consumable'),
               }));
             }
           } catch (err: any) { addLog(`Sell Error: ${err.message}`, "error"); }
