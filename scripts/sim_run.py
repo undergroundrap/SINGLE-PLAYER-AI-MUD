@@ -887,7 +887,7 @@ else:
 dungeon_count = 0
 respawn_waits = 0
 
-while dungeon_count < MAX_DUNGEONS and not args.skip_to_raid:
+while dungeon_count < MAX_DUNGEONS and not args.skip_to_raid and not args.skip_to_ascend:
     p, gs = fresh_player(pid)
     level = p.get("level", 1)
     log(f"── Dungeon {dungeon_count + 1}  Lv{level}  GS {gs}", C)
