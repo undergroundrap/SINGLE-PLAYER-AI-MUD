@@ -688,7 +688,10 @@ export default function Home() {
 
     (loc?.npcs || []).filter((n: any) => n.role === 'vendor').forEach(() => {
       hb.set(idx++, () => executeCommand('shop'));
-      if ((player?.inventory || []).length > 0) hb.set(idx++, () => executeCommand('sell'));
+      if ((player?.inventory || []).length > 0) {
+        hb.set(idx++, () => executeCommand('sell'));
+        hb.set(idx++, () => executeCommand('sell all'));
+      }
     });
 
     const hasForage = (player?.active_quests || []).some((q: any) =>
@@ -1646,7 +1649,10 @@ export default function Home() {
 
     (loc?.npcs || []).filter((n: any) => n.role === 'vendor').forEach(() => {
       actions[String(idx++)] = 'shop';
-      if ((player?.inventory || []).length > 0) actions[String(idx++)] = 'sell';
+      if ((player?.inventory || []).length > 0) {
+        actions[String(idx++)] = 'sell';
+        actions[String(idx++)] = 'sell all';
+      }
     });
 
     const hasForage = (player?.active_quests || []).some((q: any) =>
@@ -2845,6 +2851,7 @@ export default function Home() {
               const sellPrice = Math.max(1, Math.floor((item.level || 1) * statTotal * 0.8));
               addLog(`${idx + 1}. [sell ${item.name}] — ${item.rarity} · ${statStr} · sells for ~${sellPrice}g`, "hint");
             });
+            addLog(`[sell all] — sell everything at once`, "hint");
           }
         }
 
@@ -3989,6 +3996,12 @@ export default function Home() {
                     btns.push(
                       <button key={`${n.id}-sell`} type="button" className="tool-button relative !text-yellow-500/50" onClick={() => executeCommand('sell')}>
                         Sell
+                        <span className="keybind-hint">{currentIdx++}</span>
+                      </button>
+                    );
+                    btns.push(
+                      <button key={`${n.id}-sellall`} type="button" className="tool-button relative !text-yellow-400/70 !border-yellow-900/40" onClick={() => executeCommand('sell all')}>
+                        Sell All
                         <span className="keybind-hint">{currentIdx++}</span>
                       </button>
                     );
