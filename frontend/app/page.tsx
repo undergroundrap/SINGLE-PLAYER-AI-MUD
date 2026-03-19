@@ -892,6 +892,44 @@ export default function Home() {
   };
 
   const renderTargetFrame = () => {
+    // ── Dungeon target frame (primary mob + DODGE button) ──
+    if (dungeonRun && !isGathering && !isHarvesting && !isFishing) {
+      const run = dungeonRun;
+      const room = run.rooms?.[run.room_index];
+      const aliveMobs = (room?.mobs || []).filter((m: any) => m.hp > 0);
+      const primaryMob = aliveMobs[0];
+      const roomCleared = room?.cleared || aliveMobs.length === 0;
+      if (!primaryMob || roomCleared) return null;
+      const tel = run.pending_telegraph;
+      const dodgePct = tel ? Math.max(0, (dodgeTimeLeft / (tel.window_ms ?? 3000)) * 100) : 0;
+      const hpPct = Math.max(0, Math.min(100, (primaryMob.hp / (primaryMob.max_hp || 1)) * 100));
+      return (
+        <div className="target-frame">
+          <div className="glass-panel target-panel">
+            <div className="target-name">
+              <span>{primaryMob.is_named ? '⚑ ' : primaryMob.is_elite ? '★ ' : ''}{primaryMob.name}</span>
+              <span className="text-[10px] opacity-60">{primaryMob.hp} / {primaryMob.max_hp} HP</span>
+            </div>
+            <div className="progress-container h-2 mt-1 border-[#600000]">
+              <div className="progress-fill target-hp-fill" style={{ width: `${hpPct}%` }} />
+            </div>
+            {tel && (
+              <button
+                className={`tool-button w-full mt-2 relative overflow-hidden animate-pulse !text-xs !py-1
+                  ${tel.is_oneshot ? '!text-white !border-red-500 !bg-red-900/30' : '!text-yellow-300 !border-yellow-600/80 !bg-yellow-900/20'}
+                  ${dungeonAttacking ? 'opacity-60' : ''}`}
+                disabled={dungeonAttacking}
+                onClick={() => fireDungeonAttack(true)}
+              >
+                <div className={`absolute left-0 top-0 h-full transition-none ${tel.is_oneshot ? 'bg-red-600/40' : 'bg-yellow-600/30'}`} style={{ width: `${dodgePct}%` }} />
+                <span className="relative z-10">☽ DODGE — {tel.name}{tel.is_oneshot ? '!' : ''}</span>
+              </button>
+            )}
+          </div>
+        </div>
+      );
+    }
+
     const makeResourceFrame = (
       label: string, secs: string, barRef: React.RefObject<HTMLDivElement | null>,
       barColor: string, glowColor: string, borderColor: string
@@ -1256,8 +1294,8 @@ export default function Home() {
           })}
         </div>
 
-        {/* ── COMBAT LOG: scrollable, fills remaining height ── */}
-        <div ref={dungeonLogRef} style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', minHeight: 0 }}>
+        {/* ── COMBAT LOG: scrollable, content anchored to bottom ── */}
+        <div ref={dungeonLogRef} style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', minHeight: 0, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
           {(run.combat_log || []).map((line: string, i: number, arr: string[]) => (
             <div key={i} className="terminal-line" style={{ color: i === arr.length - 1 ? '#ffffff' : '#6b7280', fontSize: '15px', lineHeight: '1.6' }}>
               {i === arr.length - 1 ? '▶ ' : '  '}{line}
@@ -3639,34 +3677,44 @@ export default function Home() {
             const roomCleared = room?.cleared || aliveMobs.length === 0;
             const isLastRoom = run.room_index >= (run.rooms?.length ?? 1) - 1;
             const tel = run.pending_telegraph;
-            const dodgePct = tel ? Math.max(0, (dodgeTimeLeft / (tel.window_ms ?? 3000)) * 100) : 0;
             return (
               <>
-                {/* ATTACK / DODGE — always [1] */}
-                {run.status === 'active' && !roomCleared && (tel ? (
-                  <button
-                    className={`tool-button flex-1 relative overflow-hidden animate-pulse
-                      ${tel.is_oneshot ? '!text-white !border-red-500 !bg-red-900/30' : '!text-yellow-300 !border-yellow-600/80 !bg-yellow-900/20'}
-                      ${dungeonAttacking ? 'opacity-60' : ''}`}
-                    disabled={dungeonAttacking}
-                    onClick={() => fireDungeonAttack(true)}
-                  >
-                    <div className={`absolute left-0 top-0 h-full transition-none ${tel.is_oneshot ? 'bg-red-600/40' : 'bg-yellow-600/30'}`} style={{ width: `${dodgePct}%` }} />
-                    <span className="relative z-10">{dungeonAttacking ? '...' : tel.is_oneshot ? `☽ DODGE — ${tel.name}!` : `☽ DODGE (${tel.name})`}</span>
-                    <span className="keybind-hint">1</span>
-                  </button>
-                ) : (
+                {/* ATTACK — always [1]; grayed when telegraph is active (dodge is in target frame) */}
+                {run.status === 'active' && !roomCleared && (
                   <button
                     className={`tool-button flex-1 relative overflow-hidden !text-red-400
-                      ${dungeonAttacking ? 'opacity-50 cursor-not-allowed' : dungeonAutoAttack ? '!border-red-700/80 !bg-red-950/20' : 'mob-active-pulse'}`}
-                    disabled={dungeonAttacking}
+                      ${(dungeonAttacking || !!tel) ? 'opacity-50 cursor-not-allowed' : dungeonAutoAttack ? '!border-red-700/80 !bg-red-950/20' : '!border-red-900/40'}`}
+                    disabled={dungeonAttacking || !!tel}
                     onClick={() => { if (dungeonAutoAttack) { setDungeonAutoAttack(false); } else { setDungeonAutoAttack(true); fireDungeonAttack(false); } }}
                   >
                     <div className="absolute inset-0 bg-red-900/30 origin-left transition-none" style={{ transform: `scaleX(${dungeonAttackCd / 100})` }} />
                     <span className="relative z-10">{dungeonAttacking ? '...' : dungeonAutoAttack ? '⚔ AUTO ■' : '⚔ ATTACK'}</span>
                     <span className="keybind-hint">1</span>
                   </button>
-                ))}
+                )}
+
+                {/* CONSUMABLES — heal + elixir if in inventory */}
+                {run.status === 'active' && (() => {
+                  const consumables = (player?.inventory || []).filter((i: any) => i.slot === 'consumable');
+                  const deduped: Record<string, { item: any; count: number }> = {};
+                  consumables.forEach((i: any) => { if (deduped[i.name]) deduped[i.name].count++; else deduped[i.name] = { item: i, count: 1 }; });
+                  return Object.values(deduped).map(({ item, count }) => {
+                    const isHeal = !!item.stats?.heal_pct;
+                    const cd = isHeal ? healCd : xpCd;
+                    const onCd = cd > 0;
+                    return (
+                      <button
+                        key={item.name}
+                        className={`tool-button relative ${isHeal ? '!text-green-400/80 !border-green-900/50' : '!text-yellow-400/80 !border-yellow-900/50'} ${onCd ? 'opacity-40 cursor-not-allowed' : ''}`}
+                        disabled={onCd}
+                        onClick={() => usePotion(item.id)}
+                        title={item.name}
+                      >
+                        {isHeal ? '🧪' : '✨'} USE{count > 1 ? ` ×${count}` : ''}{onCd ? ` (${cd}s)` : ''}
+                      </button>
+                    );
+                  });
+                })()}
 
                 {/* ADVANCE — [1] when room cleared (replaces attack) */}
                 {run.status === 'active' && roomCleared && !isLastRoom && (
