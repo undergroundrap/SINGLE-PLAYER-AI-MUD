@@ -379,54 +379,136 @@ body.combat-flash {
 /* Removed redundant game-title */
 
 /* Target Frame */
-.target-frame {
-  position: fixed;
-  top: 100px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 340px;
-  z-index: 1000;
-  animation: slideInDown 0.3s ease-out;
+/* ── Inline target frame (sits in header branding-center slot) ── */
+.inline-target-frame {
+  width: 100%;
+  padding: 10px 16px;
+  background: linear-gradient(to bottom, #220000, #0e0808);
+  border: 1px solid #5a0000;
+  border-radius: 2px;
+  box-shadow: inset 0 0 24px rgba(0,0,0,0.6), 0 0 16px rgba(180,0,0,0.15);
+  animation: fadeInTarget 0.25s ease-out;
 }
 
-.target-frame--elite {
-  width: 400px;
+@keyframes fadeInTarget {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-.target-frame--named {
-  width: 480px;
+.inline-target-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
 }
 
-@keyframes slideInDown {
-  from {
-    transform: translate(-50%, -20px);
-    opacity: 0;
-  }
-
-  to {
-    transform: translate(-50%, 0);
-    opacity: 1;
-  }
+.inline-target-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
-.target-panel {
-  padding: 12px 20px;
-  background: linear-gradient(to bottom, #2a0000, #0a0a0b);
-  border: 1px solid #600000;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+.inline-target-prefix {
+  color: #ff6622;
+  font-size: 15px;
+  flex-shrink: 0;
 }
 
-.target-name {
-  color: #ff3333;
+.inline-target-name {
   font-family: var(--font-header);
+  font-size: 17px;
   font-weight: 900;
-  font-size: 14px;
+  color: #ff3333;
   text-transform: uppercase;
   letter-spacing: 2px;
-  margin-bottom: 4px;
+  white-space: nowrap;
+  text-shadow: 0 0 12px rgba(255,50,50,0.4), 1px 1px 0 #000;
+}
+
+.inline-target-badge {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  padding: 2px 7px;
+  border-radius: 2px;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.badge-boss {
+  background: rgba(255, 80, 0, 0.15);
+  border: 1px solid #cc4400;
+  color: #ff8844;
+}
+
+.badge-elite {
+  background: rgba(255, 200, 0, 0.1);
+  border: 1px solid #997700;
+  color: #ffcc44;
+}
+
+.inline-target-hp-text {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: #cc3333;
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.inline-target-bar-track {
+  height: 6px;
+  background: #1a0000;
+  border: 1px solid #3a0000;
+  border-radius: 1px;
+  overflow: hidden;
+}
+
+.inline-target-bar-fill {
+  height: 100%;
+  background: linear-gradient(to right, #8b0000, #dd2200);
+  box-shadow: 0 0 8px rgba(200,50,0,0.5);
+  transition: width 0.4s ease;
+}
+
+.inline-target-description {
+  margin: 5px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #a07850;
+  font-style: italic;
+  opacity: 0.85;
+}
+
+/* ── Inline resource frame (harvest / fish / gather) ── */
+.inline-resource-frame {
+  width: 100%;
+  padding: 10px 16px;
+  border: 1px solid;
+  border-radius: 2px;
+  background: rgba(0,0,0,0.4);
+  animation: fadeInTarget 0.25s ease-out;
+}
+
+.inline-resource-label {
   display: flex;
   justify-content: space-between;
-  text-shadow: 1px 1px 1px #000;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+}
+
+.inline-resource-bar-track {
+  height: 8px;
+  background: #000;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 2px;
+  overflow: hidden;
 }
 
 .main-content-wrapper {

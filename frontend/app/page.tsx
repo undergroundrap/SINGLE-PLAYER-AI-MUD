@@ -935,7 +935,68 @@ export default function Home() {
   };
 
   const renderTargetFrame = () => {
-    // ── Dungeon target frame (primary mob + DODGE button) ──
+    // ── Inline helper: boss/mob unit frame ──
+    const makeMobFrame = (
+      name: string, hp: number, maxHp: number, level: number | null,
+      isNamed: boolean, isElite: boolean,
+      dodge?: { pct: number; label: string; isOneshot: boolean; disabled: boolean; onClick: () => void },
+      description?: string
+    ) => {
+      const hpPct = Math.max(0, Math.min(100, (hp / (maxHp || 1)) * 100));
+      const prefix = isNamed ? '⚑' : isElite ? '★' : '';
+      const badge = isNamed ? 'BOSS' : isElite ? 'ELITE' : null;
+      return (
+        <div className="inline-target-frame">
+          <div className="inline-target-header">
+            <div className="inline-target-name-row">
+              {prefix && <span className="inline-target-prefix">{prefix}</span>}
+              <span className="inline-target-name">{name}</span>
+              {badge && <span className={`inline-target-badge ${isNamed ? 'badge-boss' : 'badge-elite'}`}>{badge}</span>}
+            </div>
+            <span className="inline-target-hp-text">
+              HP {hp.toLocaleString()} / {maxHp.toLocaleString()}
+              {level !== null && <span className="opacity-50 ml-2">· LV {level}</span>}
+            </span>
+          </div>
+          <div className="inline-target-bar-track">
+            <div className="inline-target-bar-fill" style={{ width: `${hpPct}%` }} />
+          </div>
+          {description && (
+            <p className="inline-target-description">{description}</p>
+          )}
+          {dodge && (
+            <button
+              className={`tool-button w-full mt-2 relative overflow-hidden animate-pulse !text-xs !py-1
+                ${dodge.isOneshot ? '!text-white !border-red-500 !bg-red-900/30' : '!text-yellow-300 !border-yellow-600/80 !bg-yellow-900/20'}
+                ${dodge.disabled ? 'opacity-60' : ''}`}
+              disabled={dodge.disabled}
+              onClick={dodge.onClick}
+            >
+              <div className={`absolute left-0 top-0 h-full transition-none ${dodge.isOneshot ? 'bg-red-600/40' : 'bg-yellow-600/30'}`} style={{ width: `${dodge.pct}%` }} />
+              <span className="relative z-10">☽ DODGE — {dodge.label}{dodge.isOneshot ? '!' : ''}</span>
+            </button>
+          )}
+        </div>
+      );
+    };
+
+    // ── Inline helper: resource activity frame ──
+    const makeResourceFrame = (
+      label: string, secs: string, barRef: React.RefObject<HTMLDivElement | null>,
+      barColor: string, glowColor: string, borderColor: string
+    ) => (
+      <div className="inline-resource-frame" style={{ borderColor }}>
+        <div className="inline-resource-label" style={{ color: borderColor === '#7a5c00' ? '#ffe033' : borderColor === '#2d6b2d' ? '#6de06d' : '#4ab8e0' }}>
+          <span>{label}</span>
+          <span className="tabular-nums">{secs}s remaining</span>
+        </div>
+        <div className="inline-resource-bar-track">
+          <div ref={barRef} style={{ width: '0%', height: '100%', background: barColor, boxShadow: `0 0 12px ${glowColor}`, transition: 'none' }} />
+        </div>
+      </div>
+    );
+
+    // ── Dungeon target frame ──
     if (dungeonRun && !isGathering && !isHarvesting && !isFishing) {
       const run = dungeonRun;
       const room = run.rooms?.[run.room_index];
@@ -945,52 +1006,14 @@ export default function Home() {
       if (!primaryMob || roomCleared) return null;
       const tel = run.pending_telegraph;
       const dodgePct = tel ? Math.max(0, (dodgeTimeLeft / (tel.window_ms ?? 3000)) * 100) : 0;
-      const hpPct = Math.max(0, Math.min(100, (primaryMob.hp / (primaryMob.max_hp || 1)) * 100));
-      const frameSizeClass = primaryMob.is_named ? 'target-frame--named' : primaryMob.is_elite ? 'target-frame--elite' : '';
-      return (
-        <div className={`target-frame ${frameSizeClass}`}>
-          <div className="glass-panel target-panel">
-            <div className="target-name">
-              <span className={`whitespace-nowrap ${primaryMob.is_named ? 'text-[16px]' : ''}`}>{primaryMob.is_named ? '⚑ ' : primaryMob.is_elite ? '★ ' : ''}{primaryMob.name}</span>
-              <span className="text-[11px] opacity-70 tabular-nums whitespace-nowrap">HP {primaryMob.hp.toLocaleString()} / {primaryMob.max_hp.toLocaleString()}</span>
-            </div>
-            <div className="progress-container h-2 mt-1 border-[#600000]">
-              <div className="progress-fill target-hp-fill" style={{ width: `${hpPct}%` }} />
-            </div>
-            {tel && (
-              <button
-                className={`tool-button w-full mt-2 relative overflow-hidden animate-pulse !text-xs !py-1
-                  ${tel.is_oneshot ? '!text-white !border-red-500 !bg-red-900/30' : '!text-yellow-300 !border-yellow-600/80 !bg-yellow-900/20'}
-                  ${dungeonAttacking ? 'opacity-60' : ''}`}
-                disabled={dungeonAttacking}
-                onClick={() => fireDungeonAttack(true)}
-              >
-                <div className={`absolute left-0 top-0 h-full transition-none ${tel.is_oneshot ? 'bg-red-600/40' : 'bg-yellow-600/30'}`} style={{ width: `${dodgePct}%` }} />
-                <span className="relative z-10">☽ DODGE — {tel.name}{tel.is_oneshot ? '!' : ''}</span>
-              </button>
-            )}
-          </div>
-        </div>
+      return makeMobFrame(
+        primaryMob.name, primaryMob.hp, primaryMob.max_hp, null,
+        primaryMob.is_named, primaryMob.is_elite,
+        tel ? { pct: dodgePct, label: tel.name, isOneshot: tel.is_oneshot, disabled: dungeonAttacking, onClick: () => fireDungeonAttack(true) } : undefined
       );
     }
 
-    const makeResourceFrame = (
-      label: string, secs: string, barRef: React.RefObject<HTMLDivElement | null>,
-      barColor: string, glowColor: string, borderColor: string
-    ) => (
-      <div className="target-frame">
-        <div className="gather-panel" style={{ borderColor }}>
-          <div className="gather-label" style={{ color: barColor }}>
-            <span>{label}</span>
-            <span>{secs}s</span>
-          </div>
-          <div style={{ height: '10px', background: '#000', border: `1px solid ${borderColor}`, borderRadius: '2px', overflow: 'hidden' }}>
-            <div ref={barRef} style={{ width: '0%', height: '100%', background: barColor, boxShadow: `0 0 12px ${glowColor}` }} />
-          </div>
-        </div>
-      </div>
-    );
-
+    // ── Resource activity frames ──
     if (isGathering) {
       const s = Math.max(0, ((100 - gatherCooldown) / 100) * 8).toFixed(1);
       return makeResourceFrame('Gathering Resources', s, gatherBarRef, 'linear-gradient(to right, #a07800, #ffe033)', 'rgba(255,200,0,0.5)', '#7a5c00');
@@ -1003,47 +1026,24 @@ export default function Home() {
       const s = Math.max(0, ((100 - fishCooldown) / 100) * 12).toFixed(1);
       return makeResourceFrame('Fishing', s, fishBarRef, 'linear-gradient(to right, #1a4a7a, #4ab8e0)', 'rgba(74,184,224,0.5)', '#1a4a7a');
     }
+
+    // ── Open-world target frame ──
     if (!target) return null;
     const dodgePct = owTelegraph ? Math.max(0, (owDodgeTimeLeft / (owTelegraph.window_ms ?? 3000)) * 100) : 0;
-    const owFrameClass = target.is_named ? 'target-frame--named' : target.is_elite ? 'target-frame--elite' : '';
-    return (
-      <div className={`target-frame ${owFrameClass}`}>
-        <div className="glass-panel target-panel">
-          <div className="target-name">
-            <span className={`whitespace-nowrap ${target.is_named ? 'text-[16px]' : ''}`}>{target.is_named ? '⚑ ' : target.is_elite ? '★ ' : ''}{target.name}</span>
-            <span className="text-[11px] opacity-70 tabular-nums whitespace-nowrap">LV {target.level} · HP {(target.hp || 0).toLocaleString()} / {(target.max_hp || 0).toLocaleString()}</span>
-          </div>
-          <div className="progress-container h-2 mt-1 border-[#600000]">
-            <div
-              className="progress-fill target-hp-fill"
-              style={{ width: `${(target.hp / (target.max_hp || 100)) * 100}%` }}
-            />
-          </div>
-          {targetDescription && (
-            <p style={{ margin: '6px 0 0', fontSize: '11px', lineHeight: '1.4', color: '#a07850', fontStyle: 'italic', opacity: 0.85 }}>
-              {targetDescription}
-            </p>
-          )}
-          {/* ── Open-world DODGE window ── */}
-          {owTelegraph && (
-            <button
-              className="tool-button w-full mt-2 relative overflow-hidden animate-pulse !text-yellow-300 !border-yellow-600/80 !bg-yellow-900/20 !text-xs !py-1"
-              onClick={() => {
-                // Cancel auto-fire timer, signal dodge, fire attack immediately
-                if (owTeleTimerRef.current) { clearTimeout(owTeleTimerRef.current); owTeleTimerRef.current = null; }
-                if (owTeleIntervalRef.current) { clearInterval(owTeleIntervalRef.current); owTeleIntervalRef.current = null; }
-                setOwTelegraph(null);
-                setOwDodgeTimeLeft(0);
-                owDodgePendingRef.current = true;
-                if (autoAttackTarget) executeCommand(`attack ${autoAttackTarget}`);
-              }}
-            >
-              <div className="absolute left-0 top-0 h-full bg-yellow-600/30 transition-none" style={{ width: `${dodgePct}%` }} />
-              <span className="relative z-10">☽ DODGE — {owTelegraph.name}</span>
-            </button>
-          )}
-        </div>
-      </div>
+    return makeMobFrame(
+      target.name, target.hp || 0, target.max_hp || 100, target.level,
+      target.is_named, target.is_elite,
+      owTelegraph ? {
+        pct: dodgePct, label: owTelegraph.name, isOneshot: false, disabled: false,
+        onClick: () => {
+          if (owTeleTimerRef.current) { clearTimeout(owTeleTimerRef.current); owTeleTimerRef.current = null; }
+          if (owTeleIntervalRef.current) { clearInterval(owTeleIntervalRef.current); owTeleIntervalRef.current = null; }
+          setOwTelegraph(null); setOwDodgeTimeLeft(0);
+          owDodgePendingRef.current = true;
+          if (autoAttackTarget) executeCommand(`attack ${autoAttackTarget}`);
+        }
+      } : undefined,
+      targetDescription || undefined
     );
   };
 
@@ -3297,7 +3297,6 @@ export default function Home() {
 
   return (
     <main className="mud-container">
-      {renderTargetFrame()}
       {/* Cinematic Header Overlay */}
       {step === 'game' && (
         <header className="stats-bar-wrapper">
@@ -3334,12 +3333,16 @@ export default function Home() {
             </div>
 
             <div className="branding-center">
-              <img 
-                src="/assets/ui/logo.png" 
-                alt="SINGLE PLAYER AI MUD" 
-                className="game-logo"
-              />
-              <div className="dev-credit">developed by Ocean Bennett</div>
+              {renderTargetFrame() ?? (
+                <>
+                  <img
+                    src="/assets/ui/logo.png"
+                    alt="SINGLE PLAYER AI MUD"
+                    className="game-logo"
+                  />
+                  <div className="dev-credit">developed by Ocean Bennett</div>
+                </>
+              )}
             </div>
 
             <div className="stats-group">
