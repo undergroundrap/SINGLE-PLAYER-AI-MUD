@@ -1035,22 +1035,6 @@ export default function Home() {
   };
 
   const renderMap = () => {
-    const currentLoc = zone?.locations?.find((l: any) => l.id === player?.current_location_id);
-    if (!currentLoc) return null;
-
-    const nowSec = Date.now() / 1000;
-    const npcs = currentLoc.npcs || [];
-    // Only show alive mobs
-    const aliveMobs = (currentLoc.mobs || []).filter((m: any) => !m.respawn_at || m.respawn_at <= nowSec);
-    const deadMobs  = (currentLoc.mobs || []).filter((m: any) => m.respawn_at && m.respawn_at > nowSec);
-    // Sim players at this location
-    const simHere = (zone?.simulated_players || []).filter((sp: any) => sp.current_location_id === player?.current_location_id);
-
-    // Day/Night Icon
-    const time = zone?.time_of_day || 0.5;
-    const isDay = time > 0.25 && time < 0.75;
-    const timeIcon = isDay ? "🔆" : "🌙";
-
     // Deterministic blip positions spread around a circle
     const ringPos = (i: number, total: number, radiusPct: number, offsetAngle = 0) => {
       const angle = (2 * Math.PI * i / Math.max(total, 1)) + offsetAngle;
@@ -1059,6 +1043,74 @@ export default function Home() {
         left: `${50 + radiusPct * Math.cos(angle)}%`,
       };
     };
+
+    // ── Dungeon / Raid minimap ───────────────────────────────────────────────
+    if (dungeonRun) {
+      const room = dungeonRun.rooms?.[dungeonRun.room_index];
+      const roomMobs = room?.mobs || [];
+      const aliveMobs = roomMobs.filter((m: any) => m.hp > 0);
+      const deadMobs  = roomMobs.filter((m: any) => m.hp <= 0);
+      const partyAlive = (dungeonRun.party || []).filter((m: any) => m.is_alive);
+      const partyDead  = (dungeonRun.party || []).filter((m: any) => !m.is_alive);
+      const roomNum = (dungeonRun.room_index ?? 0) + 1;
+      const totalRooms = dungeonRun.rooms?.length ?? 3;
+      const label = dungeonRun.is_raid ? '⚔ RAID' : '⚔ DUNGEON';
+
+      return (
+        <div className="minimap-container mt-4">
+          <div className="minimap-circle" style={{ borderColor: dungeonRun.is_raid ? '#7c3aed' : '#991b1b' }}>
+            <div className="minimap-overlay" />
+            <div className="minimap-label label-n" style={{ color: dungeonRun.is_raid ? '#a78bfa' : '#f87171', fontSize: '9px' }}>{label}</div>
+            <div className="minimap-label label-s" style={{ color: '#6b7280', fontSize: '9px' }}>RM {roomNum}/{totalRooms}</div>
+
+            {/* Player (center) */}
+            <div className="blip blip-player" style={{ top: '50%', left: '50%' }} title="You" />
+
+            {/* Party members — inner ring */}
+            {partyAlive.map((m: any, i: number) => (
+              <div key={m.id} className="blip blip-npc"
+                style={ringPos(i, partyAlive.length, 20, Math.PI / 4)}
+                title={`${m.name} (${m.role}) — ${m.hp}/${m.max_hp} HP`} />
+            ))}
+            {partyDead.map((m: any, i: number) => (
+              <div key={m.id} className="blip blip-npc"
+                style={{ ...ringPos(i + partyAlive.length, dungeonRun.party.length, 20, Math.PI / 4), opacity: 0.2 }}
+                title={`${m.name} — fallen`} />
+            ))}
+
+            {/* Room mobs — outer ring */}
+            {aliveMobs.map((m: any, i: number) => (
+              <div key={m.id} className="blip blip-mob"
+                style={{
+                  ...ringPos(i, aliveMobs.length, 36),
+                  filter: m.is_named ? 'hue-rotate(270deg)' : m.is_elite ? 'hue-rotate(30deg)' : 'none',
+                }}
+                title={`${m.is_named ? '⚑ ' : m.is_elite ? '★ ' : ''}${m.name} — ${m.hp}/${m.max_hp} HP`} />
+            ))}
+            {deadMobs.map((m: any, i: number) => (
+              <div key={m.id} className="blip blip-mob"
+                style={{ ...ringPos(i + aliveMobs.length, roomMobs.length, 36), opacity: 0.15 }}
+                title={`${m.name} — slain`} />
+            ))}
+          </div>
+          <div className="time-indicator" title={dungeonRun.dungeon_name}>⚔</div>
+        </div>
+      );
+    }
+
+    // ── Open-world minimap ───────────────────────────────────────────────────
+    const currentLoc = zone?.locations?.find((l: any) => l.id === player?.current_location_id);
+    if (!currentLoc) return null;
+
+    const nowSec = Date.now() / 1000;
+    const npcs = currentLoc.npcs || [];
+    const aliveMobs = (currentLoc.mobs || []).filter((m: any) => !m.respawn_at || m.respawn_at <= nowSec);
+    const deadMobs  = (currentLoc.mobs || []).filter((m: any) => m.respawn_at && m.respawn_at > nowSec);
+    const simHere = (zone?.simulated_players || []).filter((sp: any) => sp.current_location_id === player?.current_location_id);
+
+    const time = zone?.time_of_day || 0.5;
+    const isDay = time > 0.25 && time < 0.75;
+    const timeIcon = isDay ? "🔆" : "🌙";
 
     return (
       <div className="minimap-container mt-4">
@@ -1087,14 +1139,14 @@ export default function Home() {
               title={`${m.name} (Lv ${m.level})`} />
           ))}
 
-          {/* Dead mobs — same positions but dimmed */}
+          {/* Dead mobs — dimmed */}
           {deadMobs.map((m: any, i: number) => (
             <div key={m.id} className="blip blip-mob"
               style={{ ...ringPos(i + aliveMobs.length, aliveMobs.length + deadMobs.length, 30), opacity: 0.2 }}
               title={`${m.name} — dead (respawning)`} />
           ))}
 
-          {/* Sim players at this location — outer ring */}
+          {/* Sim players — outer ring */}
           {simHere.map((sp: any, i: number) => (
             <div key={sp.id} className="blip blip-npc"
               style={{ ...ringPos(i, simHere.length, 38, Math.PI), filter: 'hue-rotate(90deg)', opacity: 0.85 }}
