@@ -7,20 +7,22 @@ An infinite, AI-powered text-based MMORPG. Explore a procedurally generated open
 ## Table of Contents
 
 1. [Concept](#concept)
-2. [Tech Stack](#tech-stack)
-3. [Architecture Overview](#architecture-overview)
-4. [Quick Reference — What Lives Where](#quick-reference--what-lives-where)
-5. [Directory Structure & What Lives Where](#directory-structure--what-lives-where)
-6. [Key Systems — How They Work](#key-systems--how-they-work)
-7. [Math & Scaling Reference](#math--scaling-reference)
-8. [Data Models](#data-models)
-9. [API Reference](#api-reference)
-10. [Getting Started](#getting-started)
-11. [Environment Variables](#environment-variables)
-12. [Simulation-Driven Balance Methodology](#simulation-driven-balance-methodology)
-13. [Extending the Game](#extending-the-game)
-14. [Design Decisions](#design-decisions)
-15. [Known Constraints & Gotchas](#known-constraints--gotchas)
+2. [The Infinite Loop — Foundational Mechanic](#the-infinite-loop--foundational-mechanic)
+3. [Tech Stack](#tech-stack)
+4. [Architecture Overview](#architecture-overview)
+5. [Quick Reference — What Lives Where](#quick-reference--what-lives-where)
+6. [Directory Structure & What Lives Where](#directory-structure--what-lives-where)
+7. [Key Systems — How They Work](#key-systems--how-they-work)
+8. [Math & Scaling Reference](#math--scaling-reference)
+9. [Data Models](#data-models)
+10. [API Reference](#api-reference)
+11. [Getting Started](#getting-started)
+12. [Environment Variables](#environment-variables)
+13. [Simulation-Driven Balance Methodology](#simulation-driven-balance-methodology)
+14. [Extending the Game](#extending-the-game)
+15. [Design Decisions](#design-decisions)
+16. [Known Constraints & Gotchas](#known-constraints--gotchas)
+17. [License](#license)
 
 ---
 
@@ -33,6 +35,50 @@ Each zone's topology is **hub → path → POI** for every spoke. Path locations
 Players are single-player but exist in a world populated by simulated entities (SimulatedPlayers) that move, rest, and respond to the environment — each with a generated fantasy name (Theron, Sylvara, Corvus, etc.) and a stable personality archetype. World chat responses come from these zone-specific players, grounded in the actual location, mobs, and weather the player is experiencing right now.
 
 Every class has a unique **auto-firing passive proc** that triggers mid-combat without any input — Rogues evade, Warlocks drain life, Paladins self-heal. Combat is intentionally hands-off so players can focus on questing, chatting, and exploring while loot and levels accumulate. Dungeon and raid portals are always visible in the sidebar from level 1 so players always know what they're working toward.
+
+---
+
+## The Infinite Loop — Foundational Mechanic
+
+> **This is the core design this engine is built around.** If you use any part of this architecture in your own project, this section is the part you're borrowing.
+
+The central problem in every prestige/idle/ARPG game is: *how do you make a loop feel faster each cycle without making it trivial?* Most games solve this with a power cliff — resets become meaningless after 20–30 cycles and the game is "solved." This engine solves it with **dual-exponential scaling**: two growth curves that chase each other forever.
+
+### The Three Scalars
+
+```
+ascension_damage_mult = 1.15 ^ ascension_count     ← player grows here
+arc_difficulty        = 1.10 ^ ascension_count     ← world grows here
+zone_difficulty_mult  = (1.0 + (zone − 1) × 0.2) × arc_difficulty
+```
+
+- **Player power** grows at `1.15^N` — compounds permanently, never resets
+- **World difficulty** grows at `1.10^N` — each arc's mobs are harder than the last
+- **Net speed gain** per ascension: `1.15 / 1.10 ≈ 4.5%`
+
+Each run is always faster. Zone 10 is always a real wall. The loop never breaks.
+
+### Why This Is Different
+
+Linear scaling (common approach: `+5% difficulty per ascension`) fails because exponential player growth eventually laps it — Zone 10 collapses to a one-shot at ascension ~12. The game is solved.
+
+Matching the player's growth rate exactly (`1.15^N` difficulty) removes all sense of progress — no run ever feels faster.
+
+The solution is two exponentials with different bases, close but not equal. The player always wins — but only barely per cycle. After 100 ascensions, runs are ~85× faster than the first. Zone 10 still requires leveling, gear, and actual engagement. After 1,000 ascensions the numbers hit scientific notation and runs are thousands of times faster — but the loop structure is identical to cycle 1.
+
+### Formal Statement
+
+> Let `p = 1.15` (player power base) and `r = 1.10` (resistance base).
+> Per-cycle speed multiplier after N ascensions: `(p/r)^N = 1.0454^N`
+> This series diverges — runs approach but never reach instant.
+> The wall (Zone 10) requires defeating mobs with HP proportional to `r^N`.
+> A naked level-1 character's base damage cannot one-shot that until `p^N > r^N × zone_difficulty`,
+> which requires sustained leveling and gear regardless of N.
+> **The loop is provably infinite.**
+
+### Origin
+
+Designed and implemented by the author of this repository (2025). The specific combination of per-arc exponential resistance scaling paired with a compounding prestige multiplier, tuned such that `player_base > resistance_base` by a fixed ratio, is the original architecture documented here. If you build on this engine or derive a system from this pattern, attribution to this repository is required under the project license (AGPL v3).
 
 ---
 
@@ -1441,6 +1487,26 @@ On first launch (detected by absence of `mud.db`), show an onboarding screen bef
 | `scripts/build_backend.sh` | PyInstaller build step |
 | `scripts/build_electron.sh` | Full packaging pipeline |
 | `electron-builder.yml` | Electron Builder config — platform targets, Steam appid, resource paths |
+
+---
+
+## License
+
+**GNU Affero General Public License v3.0 (AGPL-3.0)**
+
+Copyright © 2025 Ocean Bennett. All rights reserved.
+
+This project is open source under the AGPL v3. You are free to use, study, modify, and distribute this software under the following conditions:
+
+- **Attribution** — You must retain the original copyright notice and a visible credit to this repository in any derivative work, fork, or project that uses this engine or its architecture.
+- **Copyleft** — Any derivative work must be released under the same AGPL v3 license. You cannot make a closed-source game using this engine.
+- **Network use** — If you run a modified version of this software as a hosted service (e.g., a web game), you must make the complete source code of your version publicly available. This closes the SaaS loophole present in GPL.
+
+The **dual-exponential prestige loop** described in [The Infinite Loop](#the-infinite-loop--foundational-mechanic) section is the original design of this project. If you derive a game system from that architecture, attribution to this repository is required under the terms above.
+
+Full license text: [https://www.gnu.org/licenses/agpl-3.0.en.html](https://www.gnu.org/licenses/agpl-3.0.en.html)
+
+A `LICENSE` file containing the full AGPL v3 text is included in the root of this repository.
 
 ---
 
