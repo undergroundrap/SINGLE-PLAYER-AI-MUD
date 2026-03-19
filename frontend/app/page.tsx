@@ -1241,39 +1241,50 @@ export default function Home() {
     });
 
     return (
-      <div className="space-y-1">
+      <div className="space-y-1.5">
         {Object.values(counts).map(({ item, count }) => {
           const isHeal = !!item.stats?.heal_pct;
           const isXp   = !!item.stats?.xp_bonus_pct;
           const cd     = isHeal ? healCd : isXp ? xpCd : 0;
           const onCd   = cd > 0;
+          const accent = isHeal ? { text: '#86efac', border: 'rgba(74,222,128,0.25)', bg: 'rgba(20,83,45,0.35)', dim: 'rgba(74,222,128,0.12)' }
+                                : { text: '#fde68a', border: 'rgba(251,191,36,0.25)', bg: 'rgba(78,63,12,0.35)', dim: 'rgba(251,191,36,0.12)' };
 
           return (
-            <div key={item.name} className="flex items-center gap-2">
-              <span className="text-base">{isHeal ? '🧪' : '✨'}</span>
-              <div className="flex-1 min-w-0">
-                <div className="text-xs text-gray-200 truncate">
-                  {item.name}{count > 1 ? ` ×${count}` : ''}
+            <button
+              key={item.name}
+              className="tool-button w-full relative overflow-hidden flex items-center gap-2 !py-1.5 !px-2.5 text-left"
+              style={{
+                color: onCd ? '#4b5563' : accent.text,
+                borderColor: onCd ? 'rgba(75,85,99,0.3)' : accent.border,
+                background: onCd ? 'transparent' : accent.bg,
+                cursor: onCd ? 'not-allowed' : 'pointer',
+              }}
+              disabled={onCd}
+              onClick={() => usePotion(item.id)}
+            >
+              {/* Cooldown drain bar */}
+              {onCd && (
+                <div className="absolute left-0 top-0 h-full bg-gray-800/60 transition-none" style={{ width: '100%' }} />
+              )}
+              <span className="relative z-10 text-sm">{isHeal ? '⬡' : '◈'}</span>
+              <div className="relative z-10 flex-1 min-w-0">
+                <div className="text-[11px] font-bold tracking-wide uppercase truncate" style={{ letterSpacing: '0.08em' }}>
+                  {item.name}
                 </div>
                 {isXp && activeXpBuff && (
-                  <div className="text-xs text-yellow-400">+{activeXpBuff.bonus_pct}% XP · {activeXpBuff.charges} kills left</div>
+                  <div className="text-[9px]" style={{ color: '#fde68a', opacity: 0.8 }}>+{activeXpBuff.bonus_pct}% XP · {activeXpBuff.charges} left</div>
                 )}
                 {onCd && (
-                  <div className="text-xs text-gray-500">{cd}s cooldown</div>
+                  <div className="text-[9px] text-gray-500">{cd}s cooldown</div>
                 )}
               </div>
-              <button
-                className={`px-2 py-0.5 text-xs border transition-colors ${
-                  onCd
-                    ? 'text-gray-600 border-gray-800 cursor-not-allowed'
-                    : 'text-green-400 border-green-800 hover:text-green-300 hover:border-green-500'
-                }`}
-                disabled={onCd}
-                onClick={() => usePotion(item.id)}
-              >
-                {onCd ? `${cd}s` : 'USE'}
-              </button>
-            </div>
+              {/* Count badge */}
+              <div className="relative z-10 flex items-center justify-center w-6 h-6 rounded-sm text-[11px] font-black"
+                style={{ background: onCd ? 'rgba(75,85,99,0.2)' : accent.dim, color: onCd ? '#4b5563' : accent.text }}>
+                {onCd ? `${cd}` : count}
+              </div>
+            </button>
           );
         })}
       </div>
