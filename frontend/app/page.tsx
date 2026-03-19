@@ -177,6 +177,8 @@ export default function Home() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
+      // In dungeon mode — dungeon key handler owns 1/2/D; don't steal or redirect
+      if (dungeonRun && /^[1-9dD]$/.test(e.key)) return;
       // Hotbar number shortcuts — only in game, only when input is blank
       if (step === 'game' && /^[1-9]$/.test(e.key)) {
         const currentVal = inputRef.current?.value ?? '';
@@ -192,7 +194,7 @@ export default function Home() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [step]);
+  }, [step, dungeonRun]);
 
   // ── Patrol encounter timer ──────────────────────────────────────────────
   // Every 45s, ask the backend if a wandering enemy has appeared.
@@ -404,7 +406,7 @@ export default function Home() {
     if (!dungeonRun) return;
     const handle = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
-      if (document.activeElement === inputRef.current) return;
+      if (!/^[1-9dD]$/.test(e.key)) return; // only handle dungeon keys here
       const run = dungeonRun;
       const room = run.rooms?.[run.room_index];
       const aliveMobs = (room?.mobs || []).filter((m: any) => m.hp > 0);
@@ -1298,7 +1300,8 @@ export default function Home() {
         </div>
 
         {/* ── COMBAT LOG: scrollable, text flows from top ── */}
-        <div ref={dungeonLogRef} style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', minHeight: 0 }}>
+        <div style={{ color: '#1f2937', fontSize: '11px', letterSpacing: '0.15em', padding: '8px 24px 0', flexShrink: 0 }}>── COMBAT LOG ─────────────────────────────────────────</div>
+        <div ref={dungeonLogRef} style={{ flex: 1, overflowY: 'auto', padding: '12px 24px 20px', minHeight: 0 }}>
           {(run.combat_log || []).map((line: string, i: number, arr: string[]) => (
             <div key={i} className="terminal-line" style={{ color: i === arr.length - 1 ? '#ffffff' : '#6b7280', fontSize: '15px', lineHeight: '1.6' }}>
               {i === arr.length - 1 ? '▶ ' : '  '}{line}
