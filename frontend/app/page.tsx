@@ -3017,6 +3017,13 @@ export default function Home() {
             const res = await fetch(`http://localhost:8000/vendor/sell_rarity/${playerId}?rarity=${rarity}`, { method: 'POST' });
             const data = await res.json();
             addLog(data.message, data.sold_count > 0 ? "system" : "hint");
+            if (data.sold_count === 0) {
+              // Maybe they have one but it's equipped — check
+              const hasEquipped = player?.equipment
+                ? Object.values(player.equipment).some((eq: any) => eq?.rarity === rarity && eq?.name && eq.name !== 'None')
+                : false;
+              if (hasEquipped) addLog(`You have a ${rarity} item equipped — unequip it first to sell it.`, "hint");
+            }
             if (data.sold_count > 0) {
               setPlayer((prev: any) => ({
                 ...prev,
@@ -3042,7 +3049,16 @@ export default function Home() {
             ? inv[num - 1]
             : inv.find((i: any) => i.name.toLowerCase().includes(arg));
           if (!item) {
-            addLog("No such item in your inventory.", "error");
+            // Check if it's in an equipment slot instead of the bag
+            const equipped = player?.equipment
+              ? Object.entries(player.equipment).find(([, eq]: [string, any]) =>
+                  eq?.name && eq.name.toLowerCase().includes(arg))
+              : null;
+            if (equipped) {
+              addLog(`[${(equipped[1] as any).name}] is equipped — unequip it first, then sell.`, "hint");
+            } else {
+              addLog("No such item in your bag. Type 'sell' to list what you're carrying.", "error");
+            }
           } else {
             try {
               const res = await fetch(
