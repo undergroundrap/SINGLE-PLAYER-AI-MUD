@@ -3145,7 +3145,7 @@ export default function Home() {
             ? renderDungeonTheater()
             : (
               <div
-                className={`glass-panel terminal-wrapper flex-1${levelUpFlash ? ' levelup-flash' : autoAttackTarget ? ' combat-pulse' : isGathering || isHarvesting || isFishing ? ' gather-pulse' : ''}`}
+                className={`glass-panel terminal-wrapper flex-1${levelUpFlash ? ' levelup-flash' : autoAttackTarget ? ' combat-pulse' : isHarvesting ? ' harvest-pulse' : isFishing ? ' fish-pulse' : isGathering ? ' gather-pulse' : ''}`}
                 onAnimationEnd={() => setLevelUpFlash(false)}
               >
                 <div className="terminal-output" ref={scrollRef}>
