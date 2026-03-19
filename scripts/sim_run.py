@@ -811,8 +811,9 @@ if vendor_name:
 # PHASE 1 — OPEN WORLD: grind until level 10 (dungeon gate)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-if args.skip_to_raid:
-    section(f"PHASE 1+2 — SKIPPED (--skip-to-raid)")
+if args.skip_to_ascend:
+    section("PHASES 1+2+3 — SKIPPED (--skip-to-ascend)")
+elif args.skip_to_raid:
     r = req("post", f"/admin/boost/{pid}",
             params={"level": RAID_LEVEL_GATE, "preset": "raid"})
     if r and r.status_code == 200:
@@ -878,8 +879,8 @@ else:
 # ═══════════════════════════════════════════════════════════════════════════════
 # PHASE 2 — DUNGEON LOOP: run dungeons + open world until GS 100 + level 20
 # ═══════════════════════════════════════════════════════════════════════════════
-if args.skip_to_raid:
-    section(f"PHASE 2 — SKIPPED (--skip-to-raid)")
+if args.skip_to_ascend or args.skip_to_raid:
+    section(f"PHASE 2 — SKIPPED")
 else:
     section(f"PHASE 2 — DUNGEON LOOP (target: GS {RAID_GS_GATE} + level {RAID_LEVEL_GATE})")
 
@@ -916,7 +917,9 @@ if dungeon_count >= MAX_DUNGEONS:
 # PHASE 3 — RAID LOOP: run raids until zone travel gate met
 # ═══════════════════════════════════════════════════════════════════════════════
 p, gs = fresh_player(pid)
-if not args.quick and p.get("level", 1) >= RAID_LEVEL_GATE and gs >= RAID_GS_GATE:
+if args.skip_to_ascend:
+    section("PHASE 3 — SKIPPED (--skip-to-ascend)")
+elif not args.quick and p.get("level", 1) >= RAID_LEVEL_GATE and gs >= RAID_GS_GATE:
     section(f"PHASE 3 — RAID LOOP (until zone travel gate)")
 
     raid_count = 0
@@ -965,34 +968,52 @@ else:
 
 if args.skip_to_ascend:
     section("PHASE 4 — ASCENSION TEST (--skip-to-ascend)")
-    # Boost to raid-tier so GS 1000 is reachable, then force zone_number to 10
+
+    # Boost to raid-tier, then force zone_number=10 (ascension_count=0, mult=1.0 baseline)
     r = req("post", f"/admin/boost/{pid}", params={"level": RAID_LEVEL_GATE, "preset": "raid"})
     if r and r.status_code == 200:
         bd = r.json()
-        log(f"Boosted to Lv{bd['level']}  HP {bd['hp']}  DMG {bd['damage']}  GS {bd['gear_score']}", G)
+        log(f"Boosted → Lv{bd['level']}  HP {bd['hp']}  DMG {bd['damage']}  GS {bd['gear_score']}", G)
     else:
         warn(f"Boost failed: {r.status_code if r else 'no response'}")
 
-    # Force zone 10 (also sets ascension_count=0, mult=1.0 — clean baseline)
     r = req("post", f"/admin/force_ascend/{pid}", params={"ascensions": 0})
     if r and r.status_code == 200:
-        fa = r.json()
-        log(f"Zone set to 10  ·  Mult: {fa.get('ascension_damage_mult', '?')}", G)
+        log(f"Zone forced to 10  ·  ascension_count=0  ·  mult=×1.0  (clean baseline)", G)
     else:
         warn(f"force_ascend to zone 10 failed: {r.status_code if r else 'no response'}")
 
-    # Attempt ascension
+    # Capture pre-ascension state
+    pre, _ = fresh_player(pid)
+    pre_dmg   = pre.get("damage", 0)
+    pre_level = pre.get("level", 0)
+    pre_zone  = pre.get("current_zone_number", 0)
+    pre_mult  = pre.get("ascension_damage_mult", 1.0)
+    log(f"  BEFORE: Lv{pre_level}  DMG {pre_dmg}  Zone {pre_zone}/10  Mult ×{pre_mult}", C)
+
+    # Ascend
     r = req("post", f"/ascend/{pid}")
     if r and r.status_code == 200:
         ad = r.json()
+        post, _ = fresh_player(pid)
         expected_mult = round(1.15 ** 1, 6)
         actual_mult   = ad.get("ascension_damage_mult", 0)
-        log(f"✓ Ascension 1 complete  ·  Mult: {actual_mult}  (expected ~{expected_mult})", G)
+        log(f"  AFTER:  Lv{post.get('level',0)}  DMG {post.get('damage',0)}"
+            f"  Zone {post.get('current_zone_number',0)}/10  Mult ×{actual_mult}", G)
+        log(f"  Reset confirmed: level {pre_level}→{post.get('level',0)}"
+            f"  zone {pre_zone}→{post.get('current_zone_number',0)}"
+            f"  mult ×{pre_mult}→×{actual_mult}", G)
         if abs(actual_mult - expected_mult) > 0.001:
-            warn(f"Damage mult mismatch — got {actual_mult}, expected {expected_mult}")
+            warn(f"Mult mismatch — got {actual_mult}, expected {expected_mult}")
+        else:
+            log(f"  ✓ Damage mult correct (×{actual_mult} ≈ 1.15^1)", G)
         milestone("ASCENSION 1 — Phase 4 Complete", pid)
     else:
-        warn(f"Ascension failed: {r.json().get('detail', r.text[:80]) if r else 'no response'}")
+        try:
+            detail = r.json().get("detail", r.text[:80]) if r else "no response"
+        except Exception:
+            detail = r.text[:80] if r else "no response"
+        warn(f"Ascension failed: {detail}")
 
 elif args.ascensions > 0:
     section(f"PHASE 4 — ASCENSION STACK TEST (--ascensions {args.ascensions})")
