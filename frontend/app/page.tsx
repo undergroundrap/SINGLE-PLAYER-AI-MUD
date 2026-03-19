@@ -508,7 +508,12 @@ export default function Home() {
     });
 
     const aliveMobs = (loc?.mobs || []).filter((m: any) => !m.respawn_at || m.respawn_at <= nowTs);
-    const aliveMobNames = ([...new Set(aliveMobs.map((m: any) => m.name))] as string[]);
+    const mobRankHb = (name: string) => {
+      const ms = aliveMobs.filter((m: any) => m.name === name);
+      return ms.some((m: any) => m.is_named) ? 2 : ms.some((m: any) => m.is_elite) ? 1 : 0;
+    };
+    const aliveMobNames = ([...new Set(aliveMobs.map((m: any) => m.name))] as string[])
+      .sort((a, b) => mobRankHb(a) - mobRankHb(b));
     aliveMobNames.forEach(name => {
       const isActive = autoAttackTarget === name.toLowerCase();
       hb.set(idx++, () => isActive ? setAutoAttackTarget(null) : executeCommand(`attack ${name}`));
