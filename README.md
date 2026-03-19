@@ -90,6 +90,7 @@ Designed and implemented by the author of this repository (2025). The specific c
 | Frontend | Next.js 16 (App Router) | React SSR + client state |
 | Frontend | TypeScript | Type safety across all UI logic |
 | Frontend | Tailwind CSS + globals.css | Dark terminal aesthetic, component styles |
+| Frontend | react-markdown | Renders the How to Play guide from Markdown source |
 | Backend | FastAPI + Uvicorn | Async Python HTTP API |
 | Backend | Pydantic v2 | Schema validation and serialization (`model_dump(mode='json')`) |
 | Persistence | SQLite (stdlib) | Single `mud.db` file — stores player + zone rows as JSON blobs |

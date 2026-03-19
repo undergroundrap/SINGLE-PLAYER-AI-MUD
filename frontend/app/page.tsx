@@ -181,6 +181,17 @@ export default function Home() {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       // In dungeon mode — dungeon key handler owns 1/2/D; don't steal or redirect
       if (dungeonRun && /^[1-9dD]$/.test(e.key)) return;
+      // [2] key — open world DODGE when telegraph window is active (takes priority over hotbar)
+      if (e.key === '2' && owTelegraph && !dungeonRun) {
+        e.preventDefault();
+        if (owTeleTimerRef.current) { clearTimeout(owTeleTimerRef.current); owTeleTimerRef.current = null; }
+        if (owTeleIntervalRef.current) { clearInterval(owTeleIntervalRef.current); owTeleIntervalRef.current = null; }
+        setOwTelegraph(null);
+        setOwDodgeTimeLeft(0);
+        owDodgePendingRef.current = true;
+        if (autoAttackTarget) executeCommand(`attack ${autoAttackTarget}`);
+        return;
+      }
       // Hotbar number shortcuts — only in game, only when input is blank
       if (step === 'game' && /^[1-9]$/.test(e.key)) {
         const currentVal = inputRef.current?.value ?? '';
@@ -196,7 +207,7 @@ export default function Home() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [step, dungeonRun]);
+  }, [step, dungeonRun, owTelegraph, autoAttackTarget]);
 
   // ── Patrol encounter timer ──────────────────────────────────────────────
   // Every 45s, ask the backend if a wandering enemy has appeared.
@@ -438,12 +449,20 @@ export default function Home() {
       }
       if (e.key === '2' && run.status === 'active' && !roomCleared) {
         e.preventDefault();
+        if (run.pending_telegraph && !dungeonAttacking) {
+          // [2] = DODGE when telegraph is active
+          fireDungeonAttack(true);
+        } else {
+          // [2] = FLEE when no telegraph
+          fetch(`http://localhost:8000/dungeon/flee/${run.id}?player_id=${playerId}`, { method: 'POST' })
+            .then(() => { setDungeonRun(null); addLog('You flee the dungeon.', 'system'); });
+        }
+      }
+      if (e.key === '3' && run.status === 'active' && !roomCleared && run.pending_telegraph) {
+        // [3] = FLEE when DODGE is showing (telegraph active)
+        e.preventDefault();
         fetch(`http://localhost:8000/dungeon/flee/${run.id}?player_id=${playerId}`, { method: 'POST' })
           .then(() => { setDungeonRun(null); addLog('You flee the dungeon.', 'system'); });
-      }
-      if ((e.key === 'd' || e.key === 'D') && run.status === 'active' && !roomCleared && run.pending_telegraph && !dungeonAttacking) {
-        e.preventDefault();
-        fireDungeonAttack(true);
       }
     };
     window.addEventListener('keydown', handle);
@@ -3713,7 +3732,7 @@ export default function Home() {
                   </button>
                 )}
 
-                {/* DODGE — separate button in toolbar (same style as target frame), also in target frame */}
+                {/* DODGE — [2] when telegraph is active */}
                 {run.status === 'active' && !roomCleared && tel && (
                   <button
                     type="button"
@@ -3725,11 +3744,11 @@ export default function Home() {
                   >
                     <div className={`absolute left-0 top-0 h-full transition-none ${tel.is_oneshot ? 'bg-red-600/40' : 'bg-yellow-600/30'}`} style={{ width: `${dodgePct}%` }} />
                     <span className="relative z-10">☽ DODGE{tel.is_oneshot ? ' !' : ''}</span>
-                    <span className="keybind-hint">D</span>
+                    <span className="keybind-hint">2</span>
                   </button>
                 )}
 
-                {/* FLEE — identical to open world flee (orange, same label) */}
+                {/* FLEE — [2] normally, [3] when DODGE is showing */}
                 {run.status === 'active' && !roomCleared && (
                   <button
                     type="button"
@@ -3742,7 +3761,7 @@ export default function Home() {
                     title="Flee from the dungeon"
                   >
                     ↩ Flee
-                    <span className="keybind-hint">{dIdx++}</span>
+                    <span className="keybind-hint">{tel ? 3 : dIdx++}</span>
                   </button>
                 )}
 
@@ -3910,7 +3929,7 @@ export default function Home() {
                     <div className={`absolute left-0 top-0 h-full transition-none ${owTelegraph.is_oneshot ? 'bg-red-600/40' : 'bg-yellow-600/30'}`}
                       style={{ width: `${Math.max(0, (owDodgeTimeLeft / (owTelegraph.window_ms ?? 3000)) * 100)}%` }} />
                     <span className="relative z-10">☽ DODGE — {owTelegraph.name}</span>
-                    <span className="keybind-hint">D</span>
+                    <span className="keybind-hint">2</span>
                   </button>
                 )}
 
@@ -4115,10 +4134,16 @@ export default function Home() {
       {/* ── HOW TO PLAY MODAL — portal to body to escape mud-container stacking context ── */}
       {showHowToPlay && typeof document !== 'undefined' && createPortal(
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: '#0d0d0f', display: 'flex', flexDirection: 'column', fontFamily: 'var(--font-mono)', fontSize: '13px', lineHeight: '1.7' }}>
-          {/* Sticky header */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 32px', borderBottom: '1px solid rgba(255,255,255,0.1)', flexShrink: 0, background: 'rgba(0,0,0,0.6)' }}>
-            <div className="panel-header header-nav" style={{ marginBottom: 0 }}>HOW TO PLAY</div>
-            <button type="button" className="tool-button !text-accent/60 !border-accent/20" onClick={() => setShowHowToPlay(false)}>✕ CLOSE</button>
+          {/* Sticky header — no header-nav class (it injects the nav banner image) */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 32px', borderBottom: '1px solid rgba(196,168,79,0.25)', flexShrink: 0 }}>
+            <span style={{ color: '#c4a84f', fontWeight: 'bold', letterSpacing: '0.2em', fontSize: '11px', textTransform: 'uppercase' }}>☽ HOW TO PLAY</span>
+            <button
+              type="button"
+              onClick={() => setShowHowToPlay(false)}
+              style={{ background: 'rgba(196,168,79,0.08)', border: '1px solid rgba(196,168,79,0.3)', color: '#c4a84f', padding: '6px 16px', fontSize: '11px', letterSpacing: '0.15em', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}
+            >
+              ✕ CLOSE
+            </button>
           </div>
           {/* Scrollable content */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '32px' }}>
