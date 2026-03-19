@@ -1160,92 +1160,87 @@ export default function Home() {
     const roomCleared = room?.cleared || aliveMobs.length === 0;
     const hpPct = (hp: number, max: number) => Math.max(0, Math.min(100, (hp / (max || 1)) * 100));
 
-    const hpColor = (pct: number) =>
-      pct > 60 ? 'bg-green-600' : pct > 30 ? 'bg-yellow-500' : 'bg-red-600';
+    const hpBar = (pct: number) => {
+      const color = pct > 60 ? '#16a34a' : pct > 30 ? '#ca8a04' : '#dc2626';
+      return (
+        <div style={{ flex: 1, height: '8px', background: '#111827', borderRadius: '2px', overflow: 'hidden', minWidth: 0 }}>
+          <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: '2px', transition: 'width 0.4s ease' }} />
+        </div>
+      );
+    };
 
     return (
-      <div className="flex-1 flex flex-col min-h-0">
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, fontFamily: 'var(--font-mono)', fontSize: '15px', background: '#000' }}>
 
-        {/* Header — same height as statusline */}
-        <div className="flex-shrink-0 flex justify-between items-center px-6 py-3 border-b border-white/10 bg-black/40">
-          <span className={`font-mono font-bold tracking-widest text-sm uppercase ${run.is_raid ? 'text-amber-400' : 'text-purple-300'}`}>
-            {run.is_raid ? '★' : '⚔'} {run.dungeon_name}
-          </span>
-          <span className="font-mono text-gray-500 text-xs tracking-widest">
-            ROOM {run.room_index + 1} / {run.rooms?.length ?? 3}
-          </span>
-        </div>
+        {/* ── TOP PANEL: boss + party (fixed height) ── */}
+        <div style={{ flexShrink: 0, padding: '16px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.5)' }}>
 
-        {/* Boss HP — prominent */}
-        {primaryMob && !roomCleared && (
-          <div className="flex-shrink-0 px-6 py-3 border-b border-white/10 bg-black/30">
-            <div className="flex justify-between items-center mb-2">
-              <span className={`font-mono font-bold text-base ${primaryMob.is_named ? 'text-purple-200' : primaryMob.is_elite ? 'text-orange-300' : 'text-red-300'}`}>
-                {primaryMob.is_named ? '⚑ ' : primaryMob.is_elite ? '★ ' : ''}{primaryMob.name}
-                {aliveMobs.length > 1 && <span className="text-gray-600 font-normal text-sm ml-2">+{aliveMobs.length - 1} more</span>}
-              </span>
-              <span className="font-mono text-gray-400 text-sm">{primaryMob.hp} / {primaryMob.max_hp} HP</span>
+          {/* Dungeon name + room */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+            <span style={{ color: run.is_raid ? '#fbbf24' : '#c084fc', fontWeight: 'bold', letterSpacing: '0.12em', fontSize: '14px' }}>
+              {run.is_raid ? '★' : '⚔'} {run.dungeon_name?.toUpperCase()}
+            </span>
+            <span style={{ color: '#4b5563', fontSize: '12px', letterSpacing: '0.1em' }}>
+              ROOM {run.room_index + 1} / {run.rooms?.length ?? 3}
+            </span>
+          </div>
+
+          {/* Boss HP */}
+          {primaryMob && !roomCleared && (
+            <div style={{ marginBottom: '14px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <span style={{ fontWeight: 'bold', color: primaryMob.is_named ? '#e9d5ff' : primaryMob.is_elite ? '#fdba74' : '#fca5a5' }}>
+                  {primaryMob.is_named ? '⚑ ' : primaryMob.is_elite ? '★ ' : ''}{primaryMob.name}
+                  {aliveMobs.length > 1 && <span style={{ color: '#4b5563', fontWeight: 'normal', fontSize: '13px' }}> +{aliveMobs.length - 1} more</span>}
+                </span>
+                <span style={{ color: '#9ca3af', fontSize: '13px' }}>{primaryMob.hp} / {primaryMob.max_hp} HP</span>
+              </div>
+              {hpBar(hpPct(primaryMob.hp, primaryMob.max_hp))}
             </div>
-            <div className="w-full rounded-sm bg-gray-900" style={{ height: '10px' }}>
-              <div
-                className={`${hpColor(hpPct(primaryMob.hp, primaryMob.max_hp))} rounded-sm transition-all duration-500`}
-                style={{ width: `${hpPct(primaryMob.hp, primaryMob.max_hp)}%`, height: '10px' }}
-              />
+          )}
+
+          {/* Enrage / cleared banners */}
+          {run.boss_enraged && !roomCleared && (
+            <div style={{ textAlign: 'center', color: '#fca5a5', fontWeight: 'bold', padding: '4px 0', border: '1px solid rgba(185,28,28,0.5)', background: 'rgba(127,29,29,0.3)', letterSpacing: '0.12em', fontSize: '12px', marginBottom: '10px' }}>
+              ⚡ ENRAGED — BOSS DAMAGE +40% ⚡
             </div>
-          </div>
-        )}
+          )}
+          {roomCleared && (
+            <div style={{
+              textAlign: 'center', fontWeight: 'bold', padding: '6px 0', letterSpacing: '0.1em', marginBottom: '10px',
+              color: run.status === 'cleared' && run.is_raid ? '#fde68a' : run.status === 'cleared' ? '#fef08a' : '#86efac',
+              border: `1px solid ${run.status === 'cleared' ? 'rgba(161,120,0,0.4)' : 'rgba(22,163,74,0.4)'}`,
+              background: run.status === 'cleared' ? 'rgba(92,46,0,0.25)' : 'rgba(0,92,46,0.15)',
+            }}>
+              {run.status === 'cleared' && run.is_raid ? '★ RAID CLEARED — NEW TIER UNLOCKED ★'
+                : run.status === 'cleared' ? '★ DUNGEON CLEARED!'
+                : '✓ ROOM CLEARED — ADVANCE WHEN READY'}
+            </div>
+          )}
 
-        {/* Enrage / Room Cleared banners */}
-        {run.boss_enraged && !roomCleared && (
-          <div className="flex-shrink-0 text-center text-red-300 font-mono font-bold py-2 border-b border-red-700/60 bg-red-950/40 animate-pulse tracking-widest text-xs">
-            ⚡ ENRAGED — BOSS DAMAGE +40% ⚡
-          </div>
-        )}
-        {roomCleared && (
-          <div className={`flex-shrink-0 text-center font-mono font-bold py-2 border-b tracking-widest text-sm ${
-            run.status === 'cleared' && run.is_raid ? 'text-amber-300 border-amber-700/50 bg-amber-950/30'
-            : run.status === 'cleared' ? 'text-yellow-300 border-yellow-700/50 bg-yellow-950/30'
-            : 'text-green-400 border-green-800/50 bg-green-950/20'
-          }`}>
-            {run.status === 'cleared' && run.is_raid ? '★ RAID CLEARED — NEW TIER UNLOCKED ★'
-              : run.status === 'cleared' ? '★ DUNGEON CLEARED!'
-              : '✓ ROOM CLEARED — ADVANCE WHEN READY'}
-          </div>
-        )}
-
-        {/* Party — fixed height section */}
-        <div className="flex-shrink-0 border-b border-white/10 px-6 py-3 bg-black/20">
-          <div className="text-gray-600 text-xs tracking-widest font-mono mb-3">── PARTY ──────────────────────────────────────────</div>
+          {/* Party label */}
+          <div style={{ color: '#374151', fontSize: '11px', letterSpacing: '0.15em', marginBottom: '10px' }}>── PARTY ──────────────────────────────────────────</div>
 
           {/* Player row */}
-          <div className="flex items-center gap-3 mb-2">
-            <span className="font-mono font-bold text-accent w-24 truncate">⚔ {player?.name || 'YOU'}</span>
-            <span className="font-mono text-gray-500 text-sm w-20 truncate">{player?.char_class}</span>
-            <div className="flex-1 rounded-sm bg-gray-900" style={{ height: '7px' }}>
-              <div className={`${hpColor(hpPct(player?.hp ?? 1, player?.max_hp ?? 1))} rounded-sm transition-all duration-300`}
-                style={{ width: `${hpPct(player?.hp ?? 1, player?.max_hp ?? 1)}%`, height: '7px' }} />
-            </div>
-            <span className="font-mono text-gray-400 text-sm w-28 text-right">{player?.hp} / {player?.max_hp}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+            <span style={{ color: '#c4a84f', fontWeight: 'bold', width: '120px', flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>⚔ {player?.name || 'YOU'}</span>
+            <span style={{ color: '#6b7280', fontSize: '13px', width: '90px', flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{player?.char_class}</span>
+            {hpBar(hpPct(player?.hp ?? 1, player?.max_hp ?? 1))}
+            <span style={{ color: '#9ca3af', fontSize: '13px', width: '110px', flexShrink: 0, textAlign: 'right', whiteSpace: 'nowrap' }}>{player?.hp} / {player?.max_hp}</span>
           </div>
 
           {/* AI party members */}
           {(run.party || []).map((m: any) => {
-            const pct = hpPct(m.hp, m.max_hp);
             const roleIcon = m.role === 'healer' ? '✦' : m.role === 'tank' ? '🛡' : '⚔';
-            const roleColor = m.role === 'healer' ? 'text-green-400' : m.role === 'tank' ? 'text-blue-400' : 'text-red-400';
+            const roleColor = m.role === 'healer' ? '#4ade80' : m.role === 'tank' ? '#60a5fa' : '#f87171';
             return (
-              <div key={m.id} className={`flex items-center gap-3 mb-2 ${!m.is_alive ? 'opacity-25' : ''}`}>
-                <span className={`font-mono font-bold w-24 truncate ${m.is_alive ? 'text-gray-200' : 'text-gray-600'}`}>
-                  <span className={roleColor}>{roleIcon}</span> {m.name}
+              <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px', opacity: m.is_alive ? 1 : 0.25 }}>
+                <span style={{ color: m.is_alive ? '#e5e7eb' : '#374151', fontWeight: 'bold', width: '120px', flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <span style={{ color: roleColor }}>{roleIcon}</span> {m.name}
                 </span>
-                <span className={`font-mono text-sm w-20 truncate ${roleColor}`}>{m.char_class}</span>
-                <div className="flex-1 rounded-sm bg-gray-900" style={{ height: '7px' }}>
-                  {m.is_alive
-                    ? <div className={`${hpColor(pct)} rounded-sm transition-all duration-300`} style={{ width: `${pct}%`, height: '7px' }} />
-                    : <div className="bg-gray-900 rounded-sm" style={{ height: '7px' }} />
-                  }
-                </div>
-                <span className="font-mono text-gray-500 text-xs w-28 text-right truncate italic">
+                <span style={{ color: roleColor, fontSize: '13px', width: '90px', flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.char_class}</span>
+                {m.is_alive ? hpBar(hpPct(m.hp, m.max_hp)) : <div style={{ flex: 1, height: '8px', background: '#1f2937', borderRadius: '2px' }} />}
+                <span style={{ color: '#4b5563', fontSize: '12px', width: '110px', flexShrink: 0, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontStyle: 'italic' }}>
                   {m.is_alive ? (m.last_action || '—') : '💀 fallen'}
                 </span>
               </div>
@@ -1253,15 +1248,15 @@ export default function Home() {
           })}
         </div>
 
-        {/* Combat log — uses terminal-output class to match open world exactly */}
-        <div className="terminal-output">
+        {/* ── COMBAT LOG: scrollable, fills remaining height ── */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', minHeight: 0 }}>
           {(run.combat_log || []).map((line: string, i: number, arr: string[]) => (
-            <div key={i} className="terminal-line" style={{ color: i === arr.length - 1 ? '#ffffff' : '#6b7280' }}>
+            <div key={i} className="terminal-line" style={{ color: i === arr.length - 1 ? '#ffffff' : '#6b7280', fontSize: '15px', lineHeight: '1.6' }}>
               {i === arr.length - 1 ? '▶ ' : '  '}{line}
             </div>
           ))}
           {(run.combat_log || []).length === 0 && (
-            <div className="terminal-line" style={{ color: '#4b5563', fontStyle: 'italic' }}>
+            <div className="terminal-line" style={{ color: '#374151', fontStyle: 'italic', fontSize: '15px' }}>
               Entering {room?.name}...
             </div>
           )}
