@@ -3480,7 +3480,7 @@ export default function Home() {
 
               {dungeonRun && (
                 <div className="pb-12">
-                  <div className="panel-header header-nearby">PARTY</div>
+                  <div className="panel-header header-party">PARTY</div>
                   <div style={{ height: '32px', width: '100%' }} />
                   <div className="space-y-2 px-1">
                     {(dungeonRun.party || []).map((m: any) => {

@@ -1022,20 +1022,8 @@ body.combat-flash {
   background-image: url("/assets/ui/nearby_header.png") !important;
 }
 
-.header-lore {
-  background-image: url("/assets/ui/lore_header.png") !important;
-}
-
-.header-bags {
-  background-image: url("/assets/ui/bags_header.png") !important;
-}
-
-.header-equipment {
-  background-image: url("/assets/ui/equipment_header.png") !important;
-}
-
-.header-nearby {
-  background-image: url("/assets/ui/nearby_header.png") !important;
+.header-party {
+  background-image: url("/assets/ui/party_header.png") !important;
 }
 
 .header-lore {
