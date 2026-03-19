@@ -501,6 +501,24 @@ body.combat-flash {
   animation: gather-border-pulse 1.8s ease-in-out infinite;
 }
 
+@keyframes harvest-border-pulse {
+  0%, 100% { border-color: #1a1a1c; box-shadow: none; }
+  50%       { border-color: #16a34a; box-shadow: 0 0 8px 1px rgba(22, 163, 74, 0.4); }
+}
+
+.harvest-pulse {
+  animation: harvest-border-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes fish-border-pulse {
+  0%, 100% { border-color: #1a1a1c; box-shadow: none; }
+  50%       { border-color: #2563eb; box-shadow: 0 0 8px 1px rgba(37, 99, 235, 0.4); }
+}
+
+.fish-pulse {
+  animation: fish-border-pulse 1.4s ease-in-out infinite;
+}
+
 .terminal-output {
   flex: 1;
   overflow-y: auto !important;
