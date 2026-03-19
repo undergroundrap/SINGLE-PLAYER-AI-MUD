@@ -157,6 +157,7 @@ FastAPI  ─── main.py  (all endpoints, combat logic, loot rolling, quest ma
 | Change any visual style or animation | `frontend/app/globals.css` |
 | Run the full progression sim | `scripts/sim_run.py` |
 | Run the fast smoke test | `scripts/smoke_test.py` |
+| Create a boosted character for frontend testing | `scripts/boost_char.py` |
 | Wipe all game data | `scripts/reset_data.py` |
 
 ---
@@ -172,6 +173,9 @@ SINGLE-PLAYER-AI-MUD/
 │   │                       browser does. Use to validate balance and catch regressions.
 │   ├── smoke_test.py     ← Fast (~60s) happy-path integration test. Covers all 17
 │   │                       systems in order; creates and deletes a throwaway character.
+│   ├── boost_char.py     ← Dev tool: creates a character and instantly boosts it to
+│   │                       dungeon-ready (lv10, GS ~94) or raid-ready (lv20, GS ~280).
+│   │                       Load the character in the browser — no grinding required.
 │   └── reset_data.py     ← Deletes backend/data/mud.db entirely. Use after schema changes.
 │
 ├── frontend/
@@ -1092,6 +1096,27 @@ python ..\scripts\sim_run.py --no-cleanup
 # Custom name + different port
 python ..\scripts\sim_run.py --name BotWarrior --base http://localhost:8001
 ```
+
+### Frontend Testing (`boost_char.py`)
+
+`scripts/boost_char.py` solves a specific problem: the game's content tiers (dungeons at level 10, raids at level 20) require real grinding to reach organically — 30–90 minutes of open-world play. That's fine for players, but it makes iterating on dungeon and raid UI or mechanics extremely slow for the developer.
+
+The script creates a fresh character and calls `POST /admin/boost/{player_id}` to instantly set them to the correct level, stats, and gear score for the target tier. The character is saved to the database and appears immediately in the browser's Load Game screen — no grinding, no sim run, no waiting.
+
+```powershell
+# Dungeon-ready: level 10, GS ~94 — can enter dungeons immediately
+python ..\scripts\boost_char.py
+
+# Raid-ready: level 20, GS ~280 — can enter raids immediately
+python ..\scripts\boost_char.py --target raid
+
+# Custom character name
+python ..\scripts\boost_char.py --target dungeon --name Aldric
+```
+
+**Why this isn't a cheat concern:** The `/admin/boost` endpoint is backend-only — it has no button, no command, and no mention anywhere in the game UI. Players running the game normally through the browser have no way to discover or trigger it. Anyone technically capable of finding it in the source code could already call any backend endpoint directly, so the endpoint adds no meaningful cheat surface. This is the same pattern used by `/admin/force_ascend` (used by the sim) and `/admin/reset` (used by the reset script) — all dev-only tooling that happens to share the same server process.
+
+The boost endpoint is intentionally not rate-limited, not authenticated, and not hidden — it's a development tool, not a security boundary. Single-player local games don't have meaningful cheat protection at the HTTP layer; the gates are game design guardrails, not access control.
 
 Every log line is timestamped with seconds elapsed since sim start. Each section header shows how long the previous section took.
 
