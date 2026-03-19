@@ -1267,7 +1267,6 @@ export default function Home() {
               {onCd && (
                 <div className="absolute left-0 top-0 h-full bg-gray-800/60 transition-none" style={{ width: '100%' }} />
               )}
-              <span className="relative z-10 text-sm">{isHeal ? '⬡' : '◈'}</span>
               <div className="relative z-10 flex-1 min-w-0">
                 <div className="text-[11px] font-bold tracking-wide uppercase truncate" style={{ letterSpacing: '0.08em' }}>
                   {item.name}
