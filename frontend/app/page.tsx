@@ -432,16 +432,19 @@ export default function Home() {
             .then(() => { setDungeonRun(null); addLog('You leave the dungeon, victorious.', 'system'); });
         }
       }
-      if (e.key === '2' && run.status === 'active') {
-        // [2] = FLEE (only during active combat or cleared — not when run is fully cleared)
+      if (e.key === '2' && run.status === 'active' && !roomCleared) {
         e.preventDefault();
         fetch(`http://localhost:8000/dungeon/flee/${run.id}?player_id=${playerId}`, { method: 'POST' })
           .then(() => { setDungeonRun(null); addLog('You flee the dungeon.', 'system'); });
       }
+      if ((e.key === 'd' || e.key === 'D') && run.status === 'active' && !roomCleared && run.pending_telegraph && !dungeonAttacking) {
+        e.preventDefault();
+        fireDungeonAttack(true);
+      }
     };
     window.addEventListener('keydown', handle);
     return () => window.removeEventListener('keydown', handle);
-  }, [dungeonRun, dungeonAttacking, playerId]);
+  }, [dungeonRun, dungeonAttacking, dungeonAutoAttack, fireDungeonAttack, playerId]);
 
   // ── Auto-attack loop ────────────────────────────────────────────────────
   // Fires another attack tick automatically after the cooldown expires,
@@ -1294,8 +1297,8 @@ export default function Home() {
           })}
         </div>
 
-        {/* ── COMBAT LOG: scrollable, content anchored to bottom ── */}
-        <div ref={dungeonLogRef} style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', minHeight: 0, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+        {/* ── COMBAT LOG: scrollable, text flows from top ── */}
+        <div ref={dungeonLogRef} style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', minHeight: 0 }}>
           {(run.combat_log || []).map((line: string, i: number, arr: string[]) => (
             <div key={i} className="terminal-line" style={{ color: i === arr.length - 1 ? '#ffffff' : '#6b7280', fontSize: '15px', lineHeight: '1.6' }}>
               {i === arr.length - 1 ? '▶ ' : '  '}{line}
