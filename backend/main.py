@@ -1873,6 +1873,14 @@ async def dungeon_enter(player_id: str, is_raid: bool = False):
     return run.model_dump(mode='json')
 
 
+@app.get("/dungeon/run/{run_id}")
+async def dungeon_get_run(run_id: str):
+    run = _dungeon_runs.get(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Dungeon run not found.")
+    return run.model_dump(mode='json')
+
+
 @app.post("/dungeon/attack/{run_id}")
 async def dungeon_attack(run_id: str, player_id: str, dodged: bool = False):
     run = _dungeon_runs.get(run_id)

@@ -953,6 +953,7 @@ All endpoints are in `backend/main.py`. Backend runs on `http://localhost:8000`.
 | Method | Path | Description |
 |---|---|---|
 | `POST` | `/dungeon/enter/{player_id}` | Create an instanced dungeon or raid run. Param: `is_raid` (bool). Gates: lv10/lv20 + GS≥100 for raids. Returns full `DungeonRun`. |
+| `GET` | `/dungeon/run/{run_id}` | Fetch an active run by ID. Used by the frontend to restore dungeon state on page reload. Returns 404 if the run is not in memory (e.g. server restarted). |
 | `POST` | `/dungeon/attack/{run_id}` | Resolve one full combat round (player + all AI party members + mob counter-attacks). Params: `player_id`, `dodged` (bool, default false — set true when player successfully dodges a telegraph). Returns `run`, `round_log`, `room_cleared`, `run_cleared`, `wiped`, `xp_gained`, `gold_gained`, `loot`. |
 | `POST` | `/dungeon/advance/{run_id}` | Move to the next room after the current one is cleared. Param: `player_id`. |
 | `POST` | `/dungeon/flee/{run_id}` | Abandon the run. Clears `player.active_dungeon_run_id`. Param: `player_id`. |

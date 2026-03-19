@@ -1670,6 +1670,13 @@ export default function Home() {
             if (data.player.current_location_id) {
               setExploredLocations(new Set([data.player.current_location_id]));
             }
+            // Restore active dungeon run if one was in progress
+            if (data.player.active_dungeon_run_id) {
+              fetch(`http://localhost:8000/dungeon/run/${data.player.active_dungeon_run_id}`)
+                .then(r => r.ok ? r.json() : null)
+                .then(run => { if (run) { setDungeonRun(run); addLog('↩ Resuming dungeon run...', 'system'); } })
+                .catch(() => {});
+            }
             // Compute rested XP accumulated since last logout
             fetch(`http://localhost:8000/action/login/${data.player_id}`, { method: 'POST' })
               .then(r => r.json()).then(rd => {
@@ -3061,6 +3068,20 @@ export default function Home() {
                 <div className="hud-location">
                   <span className="location-name">{zone?.locations?.find((l: any) => l.id === player?.current_location_id)?.name || "The Void"}</span>
                 </div>
+                {step === 'game' && (
+                  <button
+                    type="button"
+                    className="text-[9px] text-red-400/40 uppercase tracking-widest hover:text-red-400/80 transition-colors mt-1 block"
+                    onClick={async () => {
+                      if (playerId) { try { await fetch(`http://localhost:8000/action/logout/${playerId}`, { method: 'POST' }); } catch {} }
+                      setPlayer(null); setPlayerId(null); setZone(null); setDungeonRun(null);
+                      setStep('intro');
+                      addLog("Logged out. Your progress is saved.", "system");
+                    }}
+                  >
+                    ⏻ Log Out
+                  </button>
+                )}
               </div>
             </div>
 
@@ -3903,7 +3924,7 @@ export default function Home() {
                   <button
                     type="button"
                     className="tool-button relative !text-purple-300/90 !border-purple-900/50"
-                    onClick={() => executeCommand('dungeon')}
+                    onClick={() => executeCommand('travel dungeon')}
                     title="Enter a dungeon (level 10+)"
                   >
                     ⚔ DUNGEON
@@ -3916,7 +3937,7 @@ export default function Home() {
                   <button
                     type="button"
                     className="tool-button relative !text-amber-400/90 !border-amber-800/50"
-                    onClick={() => executeCommand('raid')}
+                    onClick={() => executeCommand('travel raid')}
                     title="Enter a raid (level 20+, GS 100+)"
                   >
                     ★ RAID
@@ -3991,7 +4012,7 @@ export default function Home() {
           >
             <div className="panel-header header-nav mb-6 text-base">HOW TO PLAY</div>
 
-            <div className="space-y-5 text-accent/80">
+            <div className="space-y-5 text-gray-300">
 
               <div>
                 <div className="text-accent font-bold uppercase tracking-widest text-[10px] mb-1">The Loop</div>
@@ -4052,23 +4073,6 @@ export default function Home() {
                 onClick={() => setShowHowToPlay(false)}
               >
                 Keep Playing
-              </button>
-              <button
-                type="button"
-                className="tool-button flex-1 !text-red-400/70 !border-red-900/40"
-                onClick={async () => {
-                  setShowHowToPlay(false);
-                  if (playerId) {
-                    try { await fetch(`http://localhost:8000/action/logout/${playerId}`, { method: 'POST' }); } catch {}
-                  }
-                  setPlayer(null);
-                  setPlayerId(null);
-                  setZone(null);
-                  setStep('intro');
-                  addLog("Logged out. Your progress is saved.", "system");
-                }}
-              >
-                Log Out
               </button>
             </div>
           </div>
