@@ -193,6 +193,32 @@ body.combat-flash {
   transform: scale(1.05);
 }
 
+.game-logo-small {
+  height: 40px;
+  width: auto;
+  filter: drop-shadow(0 0 10px rgba(229, 179, 31, 0.25));
+}
+
+/* Combat layout: logo left + target frame right */
+.branding-combat-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+}
+
+.branding-logo-compact {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.branding-target-slot {
+  flex: 1;
+  min-width: 0;
+}
+
 .game-title {
   display: none; /* Replaced by logo */
 }

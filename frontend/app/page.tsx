@@ -3333,16 +3333,23 @@ export default function Home() {
             </div>
 
             <div className="branding-center">
-              {renderTargetFrame() ?? (
-                <>
-                  <img
-                    src="/assets/ui/logo.png"
-                    alt="SINGLE PLAYER AI MUD"
-                    className="game-logo"
-                  />
-                  <div className="dev-credit">developed by Ocean Bennett</div>
-                </>
-              )}
+              {(() => {
+                const targetContent = renderTargetFrame();
+                return targetContent ? (
+                  <div className="branding-combat-row">
+                    <div className="branding-logo-compact">
+                      <img src="/assets/ui/logo.png" alt="SINGLE PLAYER AI MUD" className="game-logo-small" />
+                      <div className="dev-credit">by Ocean Bennett</div>
+                    </div>
+                    <div className="branding-target-slot">{targetContent}</div>
+                  </div>
+                ) : (
+                  <>
+                    <img src="/assets/ui/logo.png" alt="SINGLE PLAYER AI MUD" className="game-logo" />
+                    <div className="dev-credit">developed by Ocean Bennett</div>
+                  </>
+                );
+              })()}
             </div>
 
             <div className="stats-group">
