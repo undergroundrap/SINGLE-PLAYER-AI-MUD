@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 
 interface LogEntry {
@@ -4111,17 +4112,17 @@ export default function Home() {
       </div>
       {renderTooltip()}
 
-      {/* ── HOW TO PLAY / LOGOUT MODAL ─────────────────────────────────────── */}
-      {showHowToPlay && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
-          onClick={() => setShowHowToPlay(false)}
-        >
-          <div
-            className="glass-panel max-w-2xl w-full mx-4 p-8 overflow-y-auto max-h-[90vh] text-[12px] leading-relaxed"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="panel-header header-nav mb-6 text-base">HOW TO PLAY</div>
+      {/* ── HOW TO PLAY MODAL — portal to body to escape mud-container stacking context ── */}
+      {showHowToPlay && typeof document !== 'undefined' && createPortal(
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: '#0d0d0f', display: 'flex', flexDirection: 'column', fontFamily: 'var(--font-mono)', fontSize: '13px', lineHeight: '1.7' }}>
+          {/* Sticky header */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 32px', borderBottom: '1px solid rgba(255,255,255,0.1)', flexShrink: 0, background: 'rgba(0,0,0,0.6)' }}>
+            <div className="panel-header header-nav" style={{ marginBottom: 0 }}>HOW TO PLAY</div>
+            <button type="button" className="tool-button !text-accent/60 !border-accent/20" onClick={() => setShowHowToPlay(false)}>✕ CLOSE</button>
+          </div>
+          {/* Scrollable content */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '32px' }}>
+            <div style={{ maxWidth: '680px', margin: '0 auto' }}>
 
             <div className="prose prose-invert prose-sm max-w-none" style={{ color: '#e2e8f0' }}>
               <ReactMarkdown
@@ -4182,17 +4183,10 @@ help · who · use healing · use elixir
               `}</ReactMarkdown>
             </div>
 
-            <div className="flex gap-3 mt-8">
-              <button
-                type="button"
-                className="tool-button flex-1"
-                onClick={() => setShowHowToPlay(false)}
-              >
-                Keep Playing
-              </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </main>
   );
