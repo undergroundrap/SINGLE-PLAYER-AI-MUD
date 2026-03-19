@@ -519,6 +519,15 @@ body.combat-flash {
   animation: fish-border-pulse 1.4s ease-in-out infinite;
 }
 
+@keyframes mob-active-border-pulse {
+  0%, 100% { border-color: #3b0000; box-shadow: none; }
+  50%       { border-color: #ef4444; box-shadow: 0 0 10px 2px rgba(239, 68, 68, 0.5); }
+}
+
+.mob-active-pulse {
+  animation: mob-active-border-pulse 0.9s ease-in-out infinite;
+}
+
 .terminal-output {
   flex: 1;
   overflow-y: auto !important;

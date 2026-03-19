@@ -3636,16 +3636,23 @@ export default function Home() {
                   const isNamed  = mobsOfType.some((m: any) => m.is_named);
                   const isActive = autoAttackTarget === name.toLowerCase();
                   const label    = isNamed ? `⚑ ${name}` : isElite ? `★ ${name}` : name;
-                  const colorCls = isNamed
-                    ? '!text-purple-300/90 !border-purple-900/60'
+                  const textCls = isNamed
+                    ? '!text-purple-300/90'
                     : isElite
-                    ? '!text-orange-400/90 !border-orange-900/50'
-                    : '!text-red-400/80 !border-red-900/40';
+                    ? '!text-orange-400/90'
+                    : '!text-red-400/80';
+                  const borderCls = isActive
+                    ? 'mob-active-pulse'
+                    : isNamed
+                    ? '!border-purple-900/60'
+                    : isElite
+                    ? '!border-orange-900/50'
+                    : '!border-red-900/40';
                   const btn = (
                     <button
                       key={`atk-${name}`}
                       type="button"
-                      className={`tool-button relative overflow-hidden ${colorCls} ${isActive ? 'ring-1 ring-red-500/40' : ''}`}
+                      className={`tool-button relative overflow-hidden ${textCls} ${borderCls}`}
                       onClick={() => isActive ? setAutoAttackTarget(null) : executeCommand(`attack ${name}`)}
                       title={isActive ? `Auto-attacking ${name} — click to stop` : `Attack ${name}`}
                     >
