@@ -951,8 +951,8 @@ export default function Home() {
         <div className={`target-frame ${frameSizeClass}`}>
           <div className="glass-panel target-panel">
             <div className="target-name">
-              <span className={primaryMob.is_named ? 'text-[16px]' : ''}>{primaryMob.is_named ? '⚑ ' : primaryMob.is_elite ? '★ ' : ''}{primaryMob.name}</span>
-              <span className="text-[11px] opacity-70 tabular-nums">{primaryMob.hp.toLocaleString()} / {primaryMob.max_hp.toLocaleString()} HP</span>
+              <span className={`whitespace-nowrap ${primaryMob.is_named ? 'text-[16px]' : ''}`}>{primaryMob.is_named ? '⚑ ' : primaryMob.is_elite ? '★ ' : ''}{primaryMob.name}</span>
+              <span className="text-[11px] opacity-70 tabular-nums whitespace-nowrap">HP {primaryMob.hp.toLocaleString()} / {primaryMob.max_hp.toLocaleString()}</span>
             </div>
             <div className="progress-container h-2 mt-1 border-[#600000]">
               <div className="progress-fill target-hp-fill" style={{ width: `${hpPct}%` }} />
@@ -1010,8 +1010,8 @@ export default function Home() {
       <div className={`target-frame ${owFrameClass}`}>
         <div className="glass-panel target-panel">
           <div className="target-name">
-            <span className={target.is_named ? 'text-[16px]' : ''}>{target.is_named ? '⚑ ' : target.is_elite ? '★ ' : ''}{target.name}</span>
-            <span className="text-[11px] opacity-70 tabular-nums">LV {target.level} · {(target.hp || 0).toLocaleString()} / {(target.max_hp || 0).toLocaleString()} HP</span>
+            <span className={`whitespace-nowrap ${target.is_named ? 'text-[16px]' : ''}`}>{target.is_named ? '⚑ ' : target.is_elite ? '★ ' : ''}{target.name}</span>
+            <span className="text-[11px] opacity-70 tabular-nums whitespace-nowrap">LV {target.level} · HP {(target.hp || 0).toLocaleString()} / {(target.max_hp || 0).toLocaleString()}</span>
           </div>
           <div className="progress-container h-2 mt-1 border-[#600000]">
             <div
