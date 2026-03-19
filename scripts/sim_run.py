@@ -969,19 +969,21 @@ else:
 if args.skip_to_ascend:
     section("PHASE 4 — ASCENSION TEST (--skip-to-ascend)")
 
-    # Boost to raid-tier, then force zone_number=10 (ascension_count=0, mult=1.0 baseline)
+    # Boost to raid-tier, then force zone_number=10 with 1 prior ascension as baseline
     r = req("post", f"/admin/boost/{pid}", params={"level": RAID_LEVEL_GATE, "preset": "raid"})
-    if r and r.status_code == 200:
+    if r is not None and r.status_code == 200:
         bd = r.json()
         log(f"Boosted → Lv{bd['level']}  HP {bd['hp']}  DMG {bd['damage']}  GS {bd['gear_score']}", G)
     else:
-        warn(f"Boost failed: {r.status_code if r else 'no response'}")
+        warn(f"Boost failed: {r.status_code if r is not None else 'no response'} — {r.text[:80] if r is not None else ''}")
 
-    r = req("post", f"/admin/force_ascend/{pid}", params={"ascensions": 0})
-    if r and r.status_code == 200:
-        log(f"Zone forced to 10  ·  ascension_count=0  ·  mult=×1.0  (clean baseline)", G)
+    # force_ascend with ascensions=1: sets zone=10, count=1, mult=×1.15
+    r = req("post", f"/admin/force_ascend/{pid}", params={"ascensions": 1})
+    if r is not None and r.status_code == 200:
+        fa = r.json()
+        log(f"Zone forced to 10  ·  ascension_count=1  ·  mult=×{fa.get('ascension_damage_mult','?')}", G)
     else:
-        warn(f"force_ascend to zone 10 failed: {r.status_code if r else 'no response'}")
+        warn(f"force_ascend failed: {r.status_code if r is not None else 'no response'} — {r.text[:80] if r is not None else ''}")
 
     # Capture pre-ascension state
     pre, _ = fresh_player(pid)
@@ -989,30 +991,33 @@ if args.skip_to_ascend:
     pre_level = pre.get("level", 0)
     pre_zone  = pre.get("current_zone_number", 0)
     pre_mult  = pre.get("ascension_damage_mult", 1.0)
-    log(f"  BEFORE: Lv{pre_level}  DMG {pre_dmg}  Zone {pre_zone}/10  Mult ×{pre_mult}", C)
+    pre_count = pre.get("ascension_count", 0)
+    log(f"  BEFORE: Lv{pre_level}  DMG {pre_dmg}  Zone {pre_zone}/10  Ascension #{pre_count}  Mult ×{pre_mult}", C)
 
-    # Ascend
+    # Ascend — should increment count to 2 and compound mult to ×1.15^2
     r = req("post", f"/ascend/{pid}")
-    if r and r.status_code == 200:
+    if r is not None and r.status_code == 200:
         ad = r.json()
         post, _ = fresh_player(pid)
-        expected_mult = round(1.15 ** 1, 6)
+        expected_mult = round(1.15 ** 2, 6)
         actual_mult   = ad.get("ascension_damage_mult", 0)
+        post_count    = post.get("ascension_count", 0)
         log(f"  AFTER:  Lv{post.get('level',0)}  DMG {post.get('damage',0)}"
-            f"  Zone {post.get('current_zone_number',0)}/10  Mult ×{actual_mult}", G)
-        log(f"  Reset confirmed: level {pre_level}→{post.get('level',0)}"
+            f"  Zone {post.get('current_zone_number',0)}/10  Ascension #{post_count}  Mult ×{actual_mult}", G)
+        log(f"  Reset: level {pre_level}→{post.get('level',0)}"
             f"  zone {pre_zone}→{post.get('current_zone_number',0)}"
-            f"  mult ×{pre_mult}→×{actual_mult}", G)
+            f"  count {pre_count}→{post_count}"
+            f"  mult ×{pre_mult:.4f}→×{actual_mult:.4f}", G)
         if abs(actual_mult - expected_mult) > 0.001:
-            warn(f"Mult mismatch — got {actual_mult}, expected {expected_mult}")
+            warn(f"Mult mismatch — got {actual_mult}, expected {expected_mult} (1.15^2)")
         else:
-            log(f"  ✓ Damage mult correct (×{actual_mult} ≈ 1.15^1)", G)
-        milestone("ASCENSION 1 — Phase 4 Complete", pid)
+            log(f"  ✓ Damage mult correct (×{actual_mult} ≈ 1.15^2)", G)
+        milestone(f"ASCENSION #{post_count} — Phase 4 Complete", pid)
     else:
         try:
-            detail = r.json().get("detail", r.text[:80]) if r else "no response"
+            detail = r.json().get("detail", r.text[:80]) if r is not None else "no response"
         except Exception:
-            detail = r.text[:80] if r else "no response"
+            detail = r.text[:80] if r is not None else "no response"
         warn(f"Ascension failed: {detail}")
 
 elif args.ascensions > 0:
