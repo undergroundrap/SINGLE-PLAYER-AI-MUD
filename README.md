@@ -378,8 +378,10 @@ Ascension is the meta-progression loop. The game is designed around 10-zone arcs
 **Zone difficulty scaling:**
 
 ```
-difficulty_mult = 1.0 + (zone_number − 1) × 0.2
-Zone 1 = 1.0×  ·  Zone 5 = 1.8×  ·  Zone 10 = 2.8× mob HP and damage
+arc_difficulty        = 1.10 ^ ascension_count              (grows with each ascension)
+zone_difficulty_mult  = (1.0 + (zone_number − 1) × 0.2) × arc_difficulty
+Zone 1 at ascension 0 = 1.0×  ·  Zone 10 at ascension 0 = 2.8× mob HP and damage
+Zone 10 at ascension 10 = 7.25×  ·  Zone 10 at ascension 20 = 18.8×
 ```
 
 **Ascension:**
@@ -388,18 +390,20 @@ Zone 1 = 1.0×  ·  Zone 5 = 1.8×  ·  Zone 10 = 2.8× mob HP and damage
 - Carries forward: `ascension_count + 1` and `ascension_damage_mult × 1.15`
 - Spawns a new starter zone at level 1
 
-**Damage multiplier compound:**
+**Dual-scaling math — why Zone 10 is a wall forever:**
 
-| Ascension | Mult | Effect |
-|---|---|---|
-| 1 | ×1.15 | Zone 10 slightly more manageable |
-| 5 | ×2.01 | Zone 5+ clears measurably faster |
-| 10 | ×4.05 | Zone 10 wall no longer a wall |
-| 20 | ×16.4 | Full arc speed-run viable |
-| 50 | ×1,083 | Zone 10 takes minutes, not days |
-| 200 | ×3.3 billion | Zone 1 mobs evaporate instantly |
+Player power grows at `1.15^N`. Mob difficulty grows at `1.10^N`. The net speed gain per ascension is `1.15 / 1.10 ≈ 4.5%` — each arc is always faster, but never trivially instant. Zone 10 can never be one-shotted from level 1 regardless of ascension count.
 
-The multiplier is applied in combat via a temporary copy of the player (`combat_player.damage = player.damage × ascension_damage_mult`). The base `player.damage` in the DB is never inflated — the mult is stateless and reapplied fresh every hit.
+| Ascension | Player ×DMG | Zone 10 mob ×HP | Net arc speed |
+|---|---|---|---|
+| 0 | ×1.00 | ×2.80 | baseline |
+| 5 | ×2.01 | ×4.51 | ~1.3× faster |
+| 10 | ×4.05 | ×7.25 | ~1.6× faster |
+| 20 | ×16.4 | ×18.8 | ~2.5× faster |
+| 40 | ×267 | ×127 | ~6× faster |
+| 100 | ×1,174,313 | ×13,781 | ~85× faster |
+
+The player multiplier is applied in combat via a temporary copy (`combat_player.damage = player.damage × ascension_damage_mult`). The arc difficulty is applied at zone generation time to mob HP and damage. Neither value is ever persisted back to the DB — both are stateless and recomputed fresh every use.
 
 **Numbers:** HP, gold, XP, and damage values use K/M/B/T notation in the frontend at large magnitudes, then scientific notation beyond 10^15. The game is designed for infinite play — notation handles arbitrarily large numbers gracefully.
 
@@ -796,32 +800,31 @@ Rarities are checked **best-to-worst** — the first entry that passes its roll 
 
 ### Zone Difficulty & Ascension Mult
 ```
-zone_difficulty_mult  = 1.0 + (zone_number − 1) × 0.2     (Zone 1–10 per ascension arc)
-ascension_damage_mult = 1.15 ^ ascension_count              (compounds permanently)
+arc_difficulty        = 1.10 ^ ascension_count              (exponential, grows each ascension)
+zone_difficulty_mult  = (1.0 + (zone_number − 1) × 0.2) × arc_difficulty
+ascension_damage_mult = 1.15 ^ ascension_count              (compounds permanently on player)
 
 effective_player_damage = player.damage × ascension_damage_mult
 effective_mob_hp        = base_mob_hp   × zone_difficulty_mult
 ```
 
-These two scalars interact directly: the zone wall gets harder as you push deeper, and the ascension multiplier compounds to overcome it. Applied via temporary combat copies — neither value is ever persisted back to the DB.
+Three scalars interact to produce an infinite loop:
+- **Zone wall** (`zone_difficulty_mult`): makes each zone harder within the arc
+- **Arc wall** (`arc_difficulty`): makes each arc's mobs harder than the last — grows at 1.10^N
+- **Player mult** (`ascension_damage_mult`): player grows at 1.15^N — always faster than arc difficulty
 
-| Zone | Mob HP/DMG mult | Ascensions needed to match |
-|---|---|---|
-| 1 | 1.0× | 0 (baseline) |
-| 5 | 1.8× | ~4 (×2.01 at ascension 5) |
-| 10 | 2.8× | ~9 (×3.52 at ascension 9) |
+Net benefit per ascension: `1.15 / 1.10 ≈ 4.5%` speed gain. Runs get faster forever, but Zone 10 can never be trivialized — mobs always scale ahead of a naked level-1 character.
 
-**Ascension multiplier at key counts:**
+| Ascension | Player ×DMG | Zone 10 mob ×HP | Ratio (player advantage) |
+|---|---|---|---|
+| 0 | ×1.00 | ×2.80 | 0.36 (must grind) |
+| 5 | ×2.01 | ×4.51 | 0.45 |
+| 10 | ×4.05 | ×7.25 | 0.56 |
+| 20 | ×16.4 | ×18.8 | 0.87 |
+| 40 | ×267 | ×127 | 2.1 (can clear at lower level) |
+| 100 | ×1,174,313 | ×13,781 | 85 (fastest possible arc) |
 
-| Ascensions | ×DMG | Effect |
-|---|---|---|
-| 1 | ×1.15 | Marginal edge on Zone 10 |
-| 5 | ×2.01 | Mid-arc clears noticeably faster |
-| 10 | ×4.05 | Zone 10 wall effectively removed |
-| 20 | ×16.37 | Full arc is a speed-run |
-| 50 | ×1,083 | Zone 10 takes minutes |
-| 100 | ×1,174,313 | Zone 1 mobs evaporate in one hit |
-| 200 | ×1.38 trillion | Numbers require scientific notation |
+Applied via temporary combat copies — neither multiplier is ever persisted back to the DB.
 
 ---
 

@@ -439,7 +439,13 @@ async def travel_to_zone(player_id: str, is_dungeon: bool = False, is_raid: bool
 
     # Difficulty ramps with zone number: Zone 1 = 1.0×, Zone 10 = 2.8× mob HP/dmg.
     # Ascension damage mult on the player counteracts this, getting faster each cycle.
-    zone_difficulty_mult = 1.0 + (player.current_zone_number - 1) * 0.2
+    #
+    # Arc difficulty scales exponentially with ascension count so Zone 10 remains a real
+    # wall forever. Player power grows at 1.15^N; mob difficulty grows at 1.10^N.
+    # Net speed gain per ascension ≈ 1.15/1.10 = 4.5% — perpetually faster, never trivial.
+    # Tuning: increase 1.10 base to slow progression, decrease it to let runs collapse faster.
+    arc_difficulty = 1.10 ** player.ascension_count
+    zone_difficulty_mult = (1.0 + (player.current_zone_number - 1) * 0.2) * arc_difficulty
 
     # Each completed raid pushes open-world zones 3 levels harder — infinite tier progression
     zone_level = player.level + (player.raids_cleared * 3)
