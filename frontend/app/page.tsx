@@ -365,11 +365,13 @@ export default function Home() {
       } : prev);
       if (data.loot?.length) {
         data.loot.forEach((item: any) => {
+          // Bags-full warning is urgent — show it even inside the dungeon
           if (item._dropped) addLog(`⚠ Bags full — [${item.name}] left on the ground!`, 'error');
-          else addLog(`🎒 ${item.name} (${item.rarity}) dropped!`, 'system');
+          // Regular loot already appears in the dungeon CLEARED banner; suppress open-world log spam
         });
       }
-      if (data.leveled_up) { addLog(`⬆ LEVEL UP! Now level ${data.player_level}!`, 'system'); setLevelUpFlash(true); }
+      // Level-up already appears in dungeon combat log (backend appends to round_log)
+      if (data.leveled_up) { setLevelUpFlash(true); }
       if (data.wiped) {
         addLog('☠ Your party was wiped. Retreating...', 'error');
         await fetch(`http://localhost:8000/dungeon/flee/${dungeonRun.id}?player_id=${playerId}`, { method: 'POST' }).catch(() => {});
@@ -441,7 +443,7 @@ export default function Home() {
         } else if (run.status === 'active' && roomCleared && !isLastRoom) {
           // Room cleared: [1] = ADVANCE
           fetch(`http://localhost:8000/dungeon/advance/${run.id}?player_id=${playerId}`, { method: 'POST' })
-            .then(r => r.json()).then(d => { setDungeonRun(d); addLog(`→ Entering ${d.rooms?.[d.room_index]?.name}...`, 'system'); });
+            .then(r => r.json()).then(d => { setDungeonRun(d); });
         } else if (run.status === 'cleared' || (roomCleared && isLastRoom)) {
           // Run cleared: [1] = RETURN TO WORLD
           fetch(`http://localhost:8000/dungeon/flee/${run.id}?player_id=${playerId}`, { method: 'POST' })
@@ -2768,7 +2770,6 @@ export default function Home() {
             if (res.ok) {
               const d = await res.json();
               setDungeonRun(d);
-              addLog(`→ Entering ${d.rooms?.[d.room_index]?.name}...`, 'system');
             }
           }
         }
@@ -3806,7 +3807,7 @@ export default function Home() {
                     className="tool-button relative !text-yellow-400 !border-yellow-800/50"
                     onClick={async () => {
                       const res = await fetch(`http://localhost:8000/dungeon/advance/${run.id}?player_id=${playerId}`, { method: 'POST' });
-                      if (res.ok) { const d = await res.json(); setDungeonRun(d); addLog(`→ Entering ${d.rooms?.[d.room_index]?.name}...`, 'system'); }
+                      if (res.ok) { const d = await res.json(); setDungeonRun(d); }
                     }}
                   >
                     ADVANCE →<span className="keybind-hint">1</span>
