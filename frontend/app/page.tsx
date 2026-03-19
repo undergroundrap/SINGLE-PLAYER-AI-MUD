@@ -130,6 +130,7 @@ export default function Home() {
   const autoAttackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const dungeonLogRef = useRef<HTMLDivElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const seenEntities = useRef<Set<string>>(new Set());
   const entityDescCache = useRef<Map<string, string>>(new Map());
@@ -144,14 +145,18 @@ export default function Home() {
   const ATTACK_COOLDOWN_MS = 1600; // slightly above backend 1.5s to avoid false cooldown hits
 
   useEffect(() => {
-    // Small timeout to allow DOM reconciliation before scrolling
     const timer = setTimeout(() => {
-      if (scrollRef.current) {
-        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-      }
+      if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }, 50);
     return () => clearTimeout(timer);
   }, [logs]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (dungeonLogRef.current) dungeonLogRef.current.scrollTop = dungeonLogRef.current.scrollHeight;
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [dungeonRun?.combat_log?.length]);
 
   useEffect(() => {
     const handleGlobalMouseMove = (e: MouseEvent) => {
@@ -408,6 +413,7 @@ export default function Home() {
       if (e.key === '1') {
         e.preventDefault();
         if (run.status === 'active' && !roomCleared) {
+          // Combat: [1] = ATTACK / DODGE / toggle AUTO
           if (run.pending_telegraph) {
             fireDungeonAttack(true);
           } else if (dungeonAutoAttack) {
@@ -416,19 +422,21 @@ export default function Home() {
             setDungeonAutoAttack(true);
             fireDungeonAttack(false);
           }
-        }
-      }
-      if (e.key === '2') {
-        e.preventDefault();
-        if (run.status === 'active' && roomCleared && !isLastRoom) {
+        } else if (run.status === 'active' && roomCleared && !isLastRoom) {
+          // Room cleared: [1] = ADVANCE
           fetch(`http://localhost:8000/dungeon/advance/${run.id}?player_id=${playerId}`, { method: 'POST' })
             .then(r => r.json()).then(d => { setDungeonRun(d); addLog(`→ Entering ${d.rooms?.[d.room_index]?.name}...`, 'system'); });
+        } else if (run.status === 'cleared' || (roomCleared && isLastRoom)) {
+          // Run cleared: [1] = RETURN TO WORLD
+          fetch(`http://localhost:8000/dungeon/flee/${run.id}?player_id=${playerId}`, { method: 'POST' })
+            .then(() => { setDungeonRun(null); addLog('You leave the dungeon, victorious.', 'system'); });
         }
       }
-      if (e.key === '3' || (e.key === '2' && (run.status === 'cleared' || (roomCleared && isLastRoom)))) {
+      if (e.key === '2' && run.status === 'active') {
+        // [2] = FLEE (only during active combat or cleared — not when run is fully cleared)
         e.preventDefault();
         fetch(`http://localhost:8000/dungeon/flee/${run.id}?player_id=${playerId}`, { method: 'POST' })
-          .then(() => { setDungeonRun(null); addLog('You leave the dungeon.', 'system'); });
+          .then(() => { setDungeonRun(null); addLog('You flee the dungeon.', 'system'); });
       }
     };
     window.addEventListener('keydown', handle);
@@ -1249,7 +1257,7 @@ export default function Home() {
         </div>
 
         {/* ── COMBAT LOG: scrollable, fills remaining height ── */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', minHeight: 0 }}>
+        <div ref={dungeonLogRef} style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', minHeight: 0 }}>
           {(run.combat_log || []).map((line: string, i: number, arr: string[]) => (
             <div key={i} className="terminal-line" style={{ color: i === arr.length - 1 ? '#ffffff' : '#6b7280', fontSize: '15px', lineHeight: '1.6' }}>
               {i === arr.length - 1 ? '▶ ' : '  '}{line}
@@ -3613,7 +3621,7 @@ export default function Home() {
             const dodgePct = tel ? Math.max(0, (dodgeTimeLeft / (tel.window_ms ?? 3000)) * 100) : 0;
             return (
               <>
-                {/* ATTACK / DODGE */}
+                {/* ATTACK / DODGE — always [1] */}
                 {run.status === 'active' && !roomCleared && (tel ? (
                   <button
                     className={`tool-button flex-1 relative overflow-hidden animate-pulse
@@ -3628,17 +3636,18 @@ export default function Home() {
                   </button>
                 ) : (
                   <button
-                    className={`tool-button flex-1 relative overflow-hidden !text-red-400 ${dungeonAttacking ? 'opacity-60 cursor-not-allowed' : 'mob-active-pulse'}`}
+                    className={`tool-button flex-1 relative overflow-hidden !text-red-400
+                      ${dungeonAttacking ? 'opacity-50 cursor-not-allowed' : dungeonAutoAttack ? '!border-red-700/80 !bg-red-950/20' : 'mob-active-pulse'}`}
                     disabled={dungeonAttacking}
                     onClick={() => { if (dungeonAutoAttack) { setDungeonAutoAttack(false); } else { setDungeonAutoAttack(true); fireDungeonAttack(false); } }}
                   >
                     <div className="absolute inset-0 bg-red-900/30 origin-left transition-none" style={{ transform: `scaleX(${dungeonAttackCd / 100})` }} />
-                    <span className="relative z-10">{dungeonAttacking ? '...' : dungeonAutoAttack ? '⚔ AUTO ON ■' : '⚔ ATTACK'}</span>
+                    <span className="relative z-10">{dungeonAttacking ? '...' : dungeonAutoAttack ? '⚔ AUTO ■' : '⚔ ATTACK'}</span>
                     <span className="keybind-hint">1</span>
                   </button>
                 ))}
 
-                {/* ADVANCE */}
+                {/* ADVANCE — [1] when room cleared (replaces attack) */}
                 {run.status === 'active' && roomCleared && !isLastRoom && (
                   <button
                     className="tool-button flex-1 !text-yellow-400 !border-yellow-800/50"
@@ -3647,11 +3656,11 @@ export default function Home() {
                       if (res.ok) { const d = await res.json(); setDungeonRun(d); addLog(`→ Entering ${d.rooms?.[d.room_index]?.name}...`, 'system'); }
                     }}
                   >
-                    ADVANCE →<span className="keybind-hint">2</span>
+                    ADVANCE →<span className="keybind-hint">1</span>
                   </button>
                 )}
 
-                {/* RETURN TO WORLD */}
+                {/* RETURN TO WORLD — [1] when run is fully cleared */}
                 {(run.status === 'cleared' || (run.status === 'active' && roomCleared && isLastRoom)) && (
                   <button
                     className="tool-button flex-1 !text-yellow-300 !border-yellow-700/60"
@@ -3661,11 +3670,11 @@ export default function Home() {
                       addLog('You leave the dungeon, victorious.', 'system');
                     }}
                   >
-                    ★ RETURN TO WORLD<span className="keybind-hint">2</span>
+                    ★ RETURN TO WORLD<span className="keybind-hint">1</span>
                   </button>
                 )}
 
-                {/* FLEE */}
+                {/* FLEE — [2] during active combat, hidden when cleared */}
                 {run.status === 'active' && (
                   <button
                     className="tool-button !text-gray-500 !border-gray-800"
@@ -3675,7 +3684,7 @@ export default function Home() {
                       addLog('You flee the dungeon.', 'system');
                     }}
                   >
-                    FLEE<span className="keybind-hint">3</span>
+                    FLEE<span className="keybind-hint">2</span>
                   </button>
                 )}
 
