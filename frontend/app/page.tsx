@@ -3744,7 +3744,7 @@ export default function Home() {
                 {hasPlant && (
                   <button
                     type="button"
-                    className={`tool-button relative overflow-hidden !text-green-400/90 !border-green-900/50 ${isHarvesting ? 'opacity-60 cursor-not-allowed harvest-pulse' : ''}`}
+                    className={`tool-button relative overflow-hidden !text-green-400/90 ${isHarvesting ? 'opacity-60 cursor-not-allowed harvest-pulse' : '!border-green-900/50'}`}
                     disabled={isGathering || isHarvesting || isFishing}
                     onClick={() => executeCommand('harvest')}
                     title={`Harvest ${locResources[0]}`}
@@ -3758,7 +3758,7 @@ export default function Home() {
                 {hasFish && (
                   <button
                     type="button"
-                    className={`tool-button relative overflow-hidden !text-blue-400/90 !border-blue-900/50 ${isFishing ? 'opacity-60 cursor-not-allowed fish-pulse' : ''}`}
+                    className={`tool-button relative overflow-hidden !text-blue-400/90 ${isFishing ? 'opacity-60 cursor-not-allowed fish-pulse' : '!border-blue-900/50'}`}
                     disabled={isGathering || isHarvesting || isFishing}
                     onClick={() => executeCommand('fish')}
                     title={`Fish for ${locResources[1]}`}
