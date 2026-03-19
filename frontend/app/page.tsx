@@ -2898,11 +2898,11 @@ export default function Home() {
               const statStr = item.stats ? Object.entries(item.stats).map(([k, v]) => `+${v} ${k}`).join(', ') : '';
               const canAfford = (player?.gold || 0) >= item.price;
               addLog(
-                `[buy ${idx + 1}] ${item.name} — ${item.rarity} · ${statStr} · ${item.price}g${canAfford ? '' : ' (need more gold)'}`,
+                `${idx + 1}. [buy ${item.name}] — ${item.rarity} · ${statStr} · ${item.price}g${canAfford ? '' : ' (need more gold)'}`,
                 canAfford ? "hint" : "error"
               );
             });
-            addLog("Click an item or type 'buy [#]' · 'buy [#] [qty]' for multiples.", "hint");
+            addLog("Click to buy one · type 'buy [name] [qty]' for multiples e.g. buy Healing Potion 3", "hint");
           }
           // Sell section
           const sellable = (player?.inventory || []);
@@ -2927,17 +2927,17 @@ export default function Home() {
         } else if (!playerId) {
           addLog("Character not found.", "error");
         } else {
-          // Parse "buy 7 3" → item #7, qty 3; "buy 7" → item #7, qty 1
+          // Parse trailing qty: "buy Healing Potion 3" → name="Healing Potion", qty=3
+          // Also still support plain number: "buy 2" → item #2, qty 1
           const tokens = arg.split(/\s+/);
-          const num = parseInt(tokens[0]);
-          const qty = tokens.length >= 2 && /^\d+$/.test(tokens[tokens.length - 1])
-            ? Math.min(20, Math.max(1, parseInt(tokens[tokens.length - 1])))
-            : 1;
-          const itemArg = qty > 1 ? tokens.slice(0, -1).join(' ') : arg;
+          const lastToken = tokens[tokens.length - 1];
+          const hasTrailingQty = tokens.length >= 2 && /^\d+$/.test(lastToken);
+          const qty = hasTrailingQty ? Math.min(20, Math.max(1, parseInt(lastToken))) : 1;
+          const itemArg = hasTrailingQty ? tokens.slice(0, -1).join(' ') : arg;
           const itemNum = parseInt(itemArg);
-          const itemData = !isNaN(itemNum) && itemNum > 0
+          const itemData = !isNaN(itemNum) && itemNum > 0 && String(itemNum) === itemArg
             ? vendor.vendor_items?.[itemNum - 1]
-            : vendor.vendor_items?.find((i: any) => i.name.toLowerCase().includes(itemArg));
+            : vendor.vendor_items?.find((i: any) => i.name.toLowerCase().includes(itemArg.toLowerCase()));
           if (!itemData) {
             addLog("No such item at this merchant.", "error");
           } else if ((player?.gold || 0) < itemData.price * qty) {
