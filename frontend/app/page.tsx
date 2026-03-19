@@ -1158,7 +1158,6 @@ export default function Home() {
     const boss    = room?.mobs?.find((m: any) => m.is_named || m.is_elite) || room?.mobs?.[0];
     const primaryMob  = aliveMobs[0] || boss;
     const roomCleared = room?.cleared || aliveMobs.length === 0;
-    const isLastRoom  = run.room_index >= (run.rooms?.length ?? 1) - 1;
     const hpPct = (hp: number, max: number) => Math.max(0, Math.min(100, (hp / (max || 1)) * 100));
 
     const hpColor = (pct: number) =>
@@ -1262,104 +1261,14 @@ export default function Home() {
 
         {/* Rolling combat log */}
         <div className="border-t border-white/10 pt-2">
-          <div className="text-gray-700 text-[10px] tracking-widest mb-1">── COMBAT LOG ──────────────────────</div>
+          <div className="text-gray-600 text-[10px] tracking-widest mb-1">── COMBAT LOG ──────────────────────</div>
           {(run.combat_log || []).slice(-3).map((line: string, i: number, arr: string[]) => (
-            <div key={i} className={`text-[11px] leading-5 ${i === arr.length - 1 ? 'text-gray-300' : 'text-gray-600'}`}>
+            <div key={i} className={`text-[11px] leading-5 ${i === arr.length - 1 ? 'text-white' : 'text-gray-500'}`}>
               {i === arr.length - 1 ? '▶ ' : '  '}{line}
             </div>
           ))}
           {(run.combat_log || []).length === 0 && (
-            <div className="text-gray-600 text-[10px] italic">Entering {room?.name}...</div>
-          )}
-        </div>
-
-        {/* Action buttons */}
-        <div className="flex gap-2 pt-1 border-t border-white/10">
-          {run.status === 'active' && !roomCleared && (() => {
-            const tel = run.pending_telegraph;
-            const dodgePct = tel ? Math.max(0, (dodgeTimeLeft / (tel.window_ms ?? 3000)) * 100) : 0;
-
-            return tel ? (
-              // ── DODGE window active ──
-              <button
-                className={`tool-button flex-1 relative overflow-hidden animate-pulse
-                  ${tel.is_oneshot
-                    ? '!text-white !border-red-500 !bg-red-900/30'
-                    : '!text-yellow-300 !border-yellow-600/80 !bg-yellow-900/20'}
-                  ${dungeonAttacking ? 'opacity-60' : ''}`}
-                disabled={dungeonAttacking}
-                onClick={() => fireDungeonAttack(true)}
-              >
-                <div
-                  className={`absolute left-0 top-0 h-full transition-none ${tel.is_oneshot ? 'bg-red-600/40' : 'bg-yellow-600/30'}`}
-                  style={{ width: `${dodgePct}%` }}
-                />
-                <span className="relative z-10">
-                  {dungeonAttacking ? '...' : tel.is_oneshot ? `☽ DODGE — ${tel.name}! [1]` : `☽ DODGE (${tel.name}) [1]`}
-                </span>
-              </button>
-            ) : (
-              // ── Normal ATTACK button — click once to start auto, again to stop ──
-              <button
-                className={`tool-button flex-1 relative overflow-hidden !text-red-400 ${dungeonAttacking ? 'opacity-60' : 'mob-active-pulse'}`}
-                disabled={dungeonAttacking}
-                onClick={() => {
-                  if (dungeonAutoAttack) {
-                    setDungeonAutoAttack(false);
-                  } else {
-                    setDungeonAutoAttack(true);
-                    fireDungeonAttack(false);
-                  }
-                }}
-              >
-                <div
-                  className="absolute inset-0 bg-red-900/30 origin-left transition-none"
-                  style={{ transform: `scaleX(${dungeonAttackCd / 100})` }}
-                />
-                <span className="relative z-10">
-                  {dungeonAttacking ? '...' : dungeonAutoAttack ? '⚔ AUTO ■ [1]' : '⚔ ATTACK [1]'}
-                </span>
-              </button>
-            );
-          })()}
-
-          {run.status === 'active' && roomCleared && !isLastRoom && (
-            <button
-              className="tool-button flex-1 !text-yellow-400 !border-yellow-800/50"
-              onClick={async () => {
-                const res = await fetch(`http://localhost:8000/dungeon/advance/${run.id}?player_id=${playerId}`, { method: 'POST' });
-                if (res.ok) { const d = await res.json(); setDungeonRun(d); addLog(`→ Entering ${d.rooms?.[d.room_index]?.name}...`, 'system'); }
-              }}
-            >
-              ADVANCE → [2]
-            </button>
-          )}
-
-          {(run.status === 'cleared' || (run.status === 'active' && roomCleared && isLastRoom)) && (
-            <button
-              className="tool-button flex-1 !text-yellow-400 !border-yellow-700/60"
-              onClick={async () => {
-                await fetch(`http://localhost:8000/dungeon/flee/${run.id}?player_id=${playerId}`, { method: 'POST' });
-                setDungeonRun(null);
-                addLog('You leave the dungeon, victorious.', 'system');
-              }}
-            >
-              ★ RETURN TO WORLD [2]
-            </button>
-          )}
-
-          {run.status === 'active' && (
-            <button
-              className="tool-button !text-gray-500 !border-gray-800"
-              onClick={async () => {
-                await fetch(`http://localhost:8000/dungeon/flee/${run.id}?player_id=${playerId}`, { method: 'POST' });
-                setDungeonRun(null);
-
-                addLog('You flee the dungeon.', 'system');
-              }}
-            >
-              FLEE [3]
-            </button>
+            <div className="text-gray-500 text-[10px] italic">Entering {room?.name}...</div>
           )}
         </div>
       </div>
@@ -3254,7 +3163,7 @@ export default function Home() {
           {!dungeonRun && renderWeather()}
           {dungeonRun
             ? (
-              <div className={`glass-panel terminal-wrapper flex-1${dungeonRun.status === 'active' && !dungeonRun.rooms?.[dungeonRun.room_index]?.cleared ? ' combat-pulse' : ''}`}>
+              <div className={`glass-panel terminal-wrapper flex-1${(dungeonAutoAttack || dungeonAttacking) ? ' combat-pulse' : ''}`}>
                 {renderDungeonTheater()}
               </div>
             )
@@ -3702,6 +3611,93 @@ export default function Home() {
       {/* GLOBAL ACTION BAR */}
       {step === 'game' && (
         <div className="quick-toolbar">
+
+          {/* ── DUNGEON / RAID TOOLBAR ── replaces open-world bar during a run */}
+          {dungeonRun && (() => {
+            const run = dungeonRun;
+            const room = run.rooms?.[run.room_index];
+            const aliveMobs = (room?.mobs || []).filter((m: any) => m.hp > 0);
+            const roomCleared = room?.cleared || aliveMobs.length === 0;
+            const isLastRoom = run.room_index >= (run.rooms?.length ?? 1) - 1;
+            const tel = run.pending_telegraph;
+            const dodgePct = tel ? Math.max(0, (dodgeTimeLeft / (tel.window_ms ?? 3000)) * 100) : 0;
+            return (
+              <>
+                {/* ATTACK / DODGE */}
+                {run.status === 'active' && !roomCleared && (tel ? (
+                  <button
+                    className={`tool-button flex-1 relative overflow-hidden animate-pulse
+                      ${tel.is_oneshot ? '!text-white !border-red-500 !bg-red-900/30' : '!text-yellow-300 !border-yellow-600/80 !bg-yellow-900/20'}
+                      ${dungeonAttacking ? 'opacity-60' : ''}`}
+                    disabled={dungeonAttacking}
+                    onClick={() => fireDungeonAttack(true)}
+                  >
+                    <div className={`absolute left-0 top-0 h-full transition-none ${tel.is_oneshot ? 'bg-red-600/40' : 'bg-yellow-600/30'}`} style={{ width: `${dodgePct}%` }} />
+                    <span className="relative z-10">{dungeonAttacking ? '...' : tel.is_oneshot ? `☽ DODGE — ${tel.name}!` : `☽ DODGE (${tel.name})`}</span>
+                    <span className="keybind-hint">1</span>
+                  </button>
+                ) : (
+                  <button
+                    className={`tool-button flex-1 relative overflow-hidden !text-red-400 ${dungeonAttacking ? 'opacity-60 cursor-not-allowed' : 'mob-active-pulse'}`}
+                    disabled={dungeonAttacking}
+                    onClick={() => { if (dungeonAutoAttack) { setDungeonAutoAttack(false); } else { setDungeonAutoAttack(true); fireDungeonAttack(false); } }}
+                  >
+                    <div className="absolute inset-0 bg-red-900/30 origin-left transition-none" style={{ transform: `scaleX(${dungeonAttackCd / 100})` }} />
+                    <span className="relative z-10">{dungeonAttacking ? '...' : dungeonAutoAttack ? '⚔ AUTO ON ■' : '⚔ ATTACK'}</span>
+                    <span className="keybind-hint">1</span>
+                  </button>
+                ))}
+
+                {/* ADVANCE */}
+                {run.status === 'active' && roomCleared && !isLastRoom && (
+                  <button
+                    className="tool-button flex-1 !text-yellow-400 !border-yellow-800/50"
+                    onClick={async () => {
+                      const res = await fetch(`http://localhost:8000/dungeon/advance/${run.id}?player_id=${playerId}`, { method: 'POST' });
+                      if (res.ok) { const d = await res.json(); setDungeonRun(d); addLog(`→ Entering ${d.rooms?.[d.room_index]?.name}...`, 'system'); }
+                    }}
+                  >
+                    ADVANCE →<span className="keybind-hint">2</span>
+                  </button>
+                )}
+
+                {/* RETURN TO WORLD */}
+                {(run.status === 'cleared' || (run.status === 'active' && roomCleared && isLastRoom)) && (
+                  <button
+                    className="tool-button flex-1 !text-yellow-300 !border-yellow-700/60"
+                    onClick={async () => {
+                      await fetch(`http://localhost:8000/dungeon/flee/${run.id}?player_id=${playerId}`, { method: 'POST' });
+                      setDungeonRun(null);
+                      addLog('You leave the dungeon, victorious.', 'system');
+                    }}
+                  >
+                    ★ RETURN TO WORLD<span className="keybind-hint">2</span>
+                  </button>
+                )}
+
+                {/* FLEE */}
+                {run.status === 'active' && (
+                  <button
+                    className="tool-button !text-gray-500 !border-gray-800"
+                    onClick={async () => {
+                      await fetch(`http://localhost:8000/dungeon/flee/${run.id}?player_id=${playerId}`, { method: 'POST' });
+                      setDungeonRun(null);
+                      addLog('You flee the dungeon.', 'system');
+                    }}
+                  >
+                    FLEE<span className="keybind-hint">3</span>
+                  </button>
+                )}
+
+                <button type="button" className="tool-button relative !text-accent/20 !border-accent/10 ml-auto" onClick={() => setShowHowToPlay(true)}>
+                  ☽ Guide
+                </button>
+              </>
+            );
+          })()}
+
+          {/* ── OPEN WORLD TOOLBAR ── hidden during dungeon runs */}
+          {!dungeonRun && (<>
           <button type="button" className="tool-button relative !bg-accent/5" onClick={() => executeCommand('look')}>
             Look
             <span className="keybind-hint">1</span>
@@ -3954,6 +3950,7 @@ export default function Home() {
               </>
             );
           })()}
+          </>)}
         </div>
       )}
 
