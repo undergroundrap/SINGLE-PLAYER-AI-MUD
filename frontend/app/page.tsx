@@ -678,6 +678,13 @@ export default function Home() {
       hb.set(idx++, () => isActive ? setAutoAttackTarget(null) : executeCommand(`attack ${name}`));
     });
 
+    const consumablesHb = (player?.inventory || []).filter((i: any) => i.slot === 'consumable');
+    const dedupedHb: Record<string, any> = {};
+    consumablesHb.forEach((i: any) => { if (!dedupedHb[i.name]) dedupedHb[i.name] = i; });
+    Object.values(dedupedHb).forEach((item: any) => {
+      hb.set(idx++, () => usePotion(item.id));
+    });
+
     const completedQuests = (player?.active_quests || []).filter((q: any) => q.is_completed);
     const hasQuestGiver = loc?.npcs?.some((n: any) => n.role === 'quest_giver');
     if (hasQuestGiver && completedQuests.length > 0) hb.set(idx++, () => executeCommand('turn in'));
@@ -1268,8 +1275,8 @@ export default function Home() {
                 <div className="absolute left-0 top-0 h-full bg-gray-800/60 transition-none" style={{ width: '100%' }} />
               )}
               <div className="relative z-10 flex-1 min-w-0">
-                <div className="text-[11px] font-bold tracking-wide uppercase truncate" style={{ letterSpacing: '0.08em' }}>
-                  {item.name}
+                <div className="text-[11px] font-bold tracking-wide uppercase" style={{ letterSpacing: '0.08em' }}>
+                  {item.name}{count > 1 ? <span className="font-normal opacity-70"> ×{count}</span> : ''}
                 </div>
                 {isXp && activeXpBuff && (
                   <div className="text-[9px]" style={{ color: '#fde68a', opacity: 0.8 }}>+{activeXpBuff.bonus_pct}% XP · {activeXpBuff.charges} left</div>
@@ -1277,11 +1284,6 @@ export default function Home() {
                 {onCd && (
                   <div className="text-[9px] text-gray-500">{cd}s cooldown</div>
                 )}
-              </div>
-              {/* Count badge */}
-              <div className="relative z-10 flex items-center justify-center w-6 h-6 rounded-sm text-[11px] font-black"
-                style={{ background: onCd ? 'rgba(75,85,99,0.2)' : accent.dim, color: onCd ? '#4b5563' : accent.text }}>
-                {onCd ? `${cd}` : count}
               </div>
             </button>
           );
@@ -4086,6 +4088,33 @@ export default function Home() {
                     ↩ Flee
                   </button>
                 )}
+
+                {/* USE buttons — one per consumable type, keybind-wired to match hotbar map order */}
+                {(() => {
+                  const consumables = (player?.inventory || []).filter((i: any) => i.slot === 'consumable');
+                  const deduped: Record<string, { item: any; count: number }> = {};
+                  consumables.forEach((i: any) => { if (deduped[i.name]) deduped[i.name].count++; else deduped[i.name] = { item: i, count: 1 }; });
+                  return Object.values(deduped).map(({ item, count }) => {
+                    const isHeal = !!item.stats?.heal_pct;
+                    const cd = isHeal ? healCd : xpCd;
+                    const onCd = cd > 0;
+                    const btn = (
+                      <button
+                        key={item.name}
+                        type="button"
+                        className={`tool-button relative ${isHeal ? '!text-green-400/80 !border-green-900/50' : '!text-yellow-400/80 !border-yellow-900/50'} ${onCd ? 'opacity-40 cursor-not-allowed' : ''}`}
+                        disabled={onCd}
+                        onClick={() => usePotion(item.id)}
+                        title={item.name}
+                      >
+                        {isHeal ? '🧪' : '✨'} USE{count > 1 ? ` ×${count}` : ''}{onCd ? ` (${cd}s)` : ''}
+                        <span className="keybind-hint">{currentIdx}</span>
+                      </button>
+                    );
+                    currentIdx++;
+                    return btn;
+                  });
+                })()}
 
                 {/* Turn-in button (pulsing yellow when quests ready) */}
                 {hasQuestGiver && completedQuests.length > 0 && (
