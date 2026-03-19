@@ -1324,11 +1324,20 @@ export default function Home() {
         {/* ── COMBAT LOG: scrollable, text flows from top ── */}
         <div style={{ color: '#1f2937', fontSize: '11px', letterSpacing: '0.15em', padding: '8px 24px 0', flexShrink: 0 }}>── COMBAT LOG ─────────────────────────────────────────</div>
         <div ref={dungeonLogRef} style={{ flex: 1, overflowY: 'auto', padding: '12px 24px 20px', minHeight: 0 }}>
-          {(run.combat_log || []).map((line: string, i: number, arr: string[]) => (
-            <div key={i} className="terminal-line" style={{ color: i === arr.length - 1 ? '#ffffff' : '#6b7280', fontSize: '15px', lineHeight: '1.6' }}>
-              {i === arr.length - 1 ? '▶ ' : '  '}{line}
-            </div>
-          ))}
+          {(run.combat_log || []).map((line: string, i: number, arr: string[]) => {
+            const isLast = i === arr.length - 1;
+            const isYou = /⚔\s*YOU|✗\s*YOU/.test(line);
+            return (
+              <div key={i} className="terminal-line" style={{
+                color: isYou ? '#93c5fd' : isLast ? '#ffffff' : '#6b7280',
+                fontWeight: isYou ? 'bold' : 'normal',
+                fontSize: '15px',
+                lineHeight: '1.6',
+              }}>
+                {isLast ? '▶ ' : '  '}{line}
+              </div>
+            );
+          })}
           {(run.combat_log || []).length === 0 && (
             <div className="terminal-line" style={{ color: '#374151', fontStyle: 'italic', fontSize: '15px' }}>
               Entering {room?.name}...
