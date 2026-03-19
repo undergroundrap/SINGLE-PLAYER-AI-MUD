@@ -811,8 +811,8 @@ if vendor_name:
 # PHASE 1 — OPEN WORLD: grind until level 10 (dungeon gate)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-if args.skip_to_ascend:
-    section("PHASES 1+2+3 — SKIPPED (--skip-to-ascend)")
+if args.skip_to_ascend or args.ascensions > 0:
+    section("PHASES 1+2+3 — SKIPPED")
 elif args.skip_to_raid:
     r = req("post", f"/admin/boost/{pid}",
             params={"level": RAID_LEVEL_GATE, "preset": "raid"})
@@ -879,7 +879,7 @@ else:
 # ═══════════════════════════════════════════════════════════════════════════════
 # PHASE 2 — DUNGEON LOOP: run dungeons + open world until GS 100 + level 20
 # ═══════════════════════════════════════════════════════════════════════════════
-if args.skip_to_ascend or args.skip_to_raid:
+if args.skip_to_ascend or args.skip_to_raid or args.ascensions > 0:
     section(f"PHASE 2 — SKIPPED")
 else:
     section(f"PHASE 2 — DUNGEON LOOP (target: GS {RAID_GS_GATE} + level {RAID_LEVEL_GATE})")
@@ -887,7 +887,7 @@ else:
 dungeon_count = 0
 respawn_waits = 0
 
-while dungeon_count < MAX_DUNGEONS and not args.skip_to_raid and not args.skip_to_ascend:
+while dungeon_count < MAX_DUNGEONS and not args.skip_to_raid and not args.skip_to_ascend and args.ascensions == 0:
     p, gs = fresh_player(pid)
     level = p.get("level", 1)
     log(f"── Dungeon {dungeon_count + 1}  Lv{level}  GS {gs}", C)
@@ -917,8 +917,8 @@ if dungeon_count >= MAX_DUNGEONS:
 # PHASE 3 — RAID LOOP: run raids until zone travel gate met
 # ═══════════════════════════════════════════════════════════════════════════════
 p, gs = fresh_player(pid)
-if args.skip_to_ascend:
-    section("PHASE 3 — SKIPPED (--skip-to-ascend)")
+if args.skip_to_ascend or args.ascensions > 0:
+    section("PHASE 3 — SKIPPED")
 elif not args.quick and p.get("level", 1) >= RAID_LEVEL_GATE and gs >= RAID_GS_GATE:
     section(f"PHASE 3 — RAID LOOP (until zone travel gate)")
 
