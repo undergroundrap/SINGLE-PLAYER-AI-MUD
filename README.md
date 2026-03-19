@@ -23,6 +23,7 @@ An infinite, AI-powered text-based MMORPG. Explore a procedurally generated open
 15. [Design Decisions](#design-decisions)
 16. [Known Constraints & Gotchas](#known-constraints--gotchas)
 17. [License](#license)
+18. [Commercial Licensing](#commercial-licensing)
 
 ---
 
@@ -1532,7 +1533,31 @@ The **dual-exponential prestige loop** described in [The Infinite Loop](#the-inf
 
 Full license text: [https://www.gnu.org/licenses/agpl-3.0.en.html](https://www.gnu.org/licenses/agpl-3.0.en.html)
 
-A `LICENSE` file containing the full AGPL v3 text is included in the root of this repository.
+A `LICENSE` file is included in the root of this repository.
+
+---
+
+## Commercial Licensing
+
+The AGPL v3 **requires** that any company using this engine in a commercial product release their entire product's source code under the same license. For most studios this is a non-starter.
+
+If your company wants to:
+- Ship a **closed-source game** built on this engine
+- Use this engine in a **hosted commercial service** without open-sourcing your product
+- License the **dual-exponential prestige loop architecture** for use in a proprietary title
+- Embed this engine in a **Steam, mobile, or console release**
+
+...you need a commercial license. As the sole copyright holder, Ocean Bennett issues these on a case-by-case basis.
+
+**Contact:** [github.com/undergroundrap](https://github.com/undergroundrap)
+
+Commercial licenses include:
+- Rights to ship a closed-source derivative without AGPL copyleft obligations
+- Rights to modify without publishing source
+- A visible credit requirement ("Powered by Ocean Bennett's engine") in lieu of open-source attribution
+- A one-time or royalty-based fee depending on scope and scale
+
+The open-source community retains full AGPL rights regardless of any commercial agreements.
 
 ---
 
