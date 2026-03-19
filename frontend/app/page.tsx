@@ -610,13 +610,13 @@ export default function Home() {
           )}
 
           {hoveredItem._fromInventory && (
-            <div className="mt-1 text-[9px] text-accent/50 uppercase tracking-widest">Click to equip</div>
+            <div className="mt-1 text-[9px] text-accent/50 uppercase tracking-widest">Click to equip · Right-click to sell</div>
           )}
 
           <div className="tooltip-description">
             "{hoveredItem.description || "A relic of an age long past."}"
           </div>
-          <div className="tooltip-bound">[ {hoveredItem.rarity || 'Common'} · Soulbound ]</div>
+          <div className="tooltip-bound">[ {hoveredItem.rarity || 'Common'} ]</div>
         </div>
       </div>
     );
@@ -1211,7 +1211,8 @@ export default function Home() {
               onMouseEnter={() => hasItem && setHoveredItem({ ...item, _fromInventory: true })}
               onMouseLeave={() => setHoveredItem(null)}
               onClick={() => hasItem && executeCommand(`equip ${item.name}`)}
-              title={hasItem ? `${item.name} — click to equip` : ''}
+              onContextMenu={(e) => { if (hasItem) { e.preventDefault(); executeCommand(`sell ${item.name}`); } }}
+              title={hasItem ? `${item.name} — left-click equip · right-click sell` : ''}
             >
               {hasItem && (
                 <div className="inventory-item-icon">
